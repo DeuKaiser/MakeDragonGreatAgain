@@ -1,0 +1,491 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using System.Reflection.Emit; // 为 DynamicMethod / OpCodes 添加
+using HarmonyLib;
+using Kingmaker;
+using Kingmaker.Blueprints; // 用于 BlueprintScriptableObject
+using Kingmaker.Blueprints.Classes; // 用于 BlueprintFeature
+using Kingmaker.Localization;
+using UnityEngine;
+
+namespace MDGA.Patch
+{
+    internal static partial class LocalizationInjectorExtension { }
+    internal static class LocalizationInjector
+    {
+        private const string WisNameKey = "MDGA.DD.WisdomBonus.Name";
+        private const string WisDescKey = "MDGA.DD.WisdomBonus.Desc"; // legacy (no longer used for per-level)
+        private const string ChaNameKey = "MDGA.DD.CharismaBonus.Name";
+        private const string ChaDescKey = "MDGA.DD.CharismaBonus.Desc"; // 旧字段（逐级版本已不再使用）
+
+        // 仅保留名称的简单后备；逐级的特性现在会自行注册带有正确描述的动态键。
+        private static readonly (string key,string text)[] Entries = new (string,string)[]
+        {
+            (WisNameKey, "属性增强：感知+2"),
+            (ChaNameKey, "属性增强：魅力+2")
+        };
+
+        // 新增：动态发现的实际蓝图键（MDGA_DD_<guid>_m_DisplayName 等）
+        private static readonly Dictionary<string,string> DynamicEntries = new();
+
+        private static bool _installedWatcher;
+        private static HashSet<string> _applied = new HashSet<string>();
+        private static object _lastPack;
+        private static int _injectAttempts;
+        private static bool _delayStarted;
+        private static bool _completedInjection; // 新标记
+        private static bool _localeHookInstalled;
+
+        private static readonly BlueprintGuid[] ArcanaGuids = new[] {
+            BlueprintGuid.Parse("ac04aa27a6fd8b4409b024a6544c4928"),
+            BlueprintGuid.Parse("a8baee8eb681d53438cc17bd1d125890"),
+            BlueprintGuid.Parse("153e9b6b5b0f34d45ae8e815838aca80"),
+            BlueprintGuid.Parse("5515ae09c952ae2449410ab3680462ed"),
+            BlueprintGuid.Parse("caebe2fa3b5a94d4bbc19ccca86d1d6f"),
+            BlueprintGuid.Parse("2a8ed839d57f31a4983041645f5832e2"),
+            BlueprintGuid.Parse("1af96d3ab792e3048b5e0ca47f3a524b"),
+            BlueprintGuid.Parse("456e305ebfec3204683b72a45467d87c"),
+            BlueprintGuid.Parse("0f0cb88a2ccc0814aa64c41fd251e84e"),
+            BlueprintGuid.Parse("677ae97f60d26474bbc24a50520f9424")
+        };
+        private static bool _arcanaScaled;
+
+        internal static void RegisterDynamicKey(string key, string text)
+        {
+            if (string.IsNullOrEmpty(key) || string.IsNullOrEmpty(text)) return;
+            if (!DynamicEntries.ContainsKey(key))
+            {
+                DynamicEntries[key] = text;
+                if (Main.Settings.VerboseLogging) Main.Log("[DD ProgFix][Loc] Registered dynamic key " + key);
+                // If we previously thought injection complete, but a new key appears, reopen injection.
+                if (_completedInjection && !_applied.Contains(key))
+                {
+                    _completedInjection = false; // allow EnsureInjected to run again
+                }
+                EnsureInjected();
+            }
+        }
+
+        internal static string GetFallback(string key)
+        {
+            foreach (var (k, t) in Entries)
+                if (k == key) return t;
+            if (DynamicEntries.TryGetValue(key, out var dyn)) return dyn;
+            return null;
+        }
+
+        internal static void EnsureInjected()
+        {
+            // 仅当标记为完成 且 当前已知的所有动态键都已应用时才跳过。
+            if (_completedInjection && DynamicEntries.Keys.All(k => _applied.Contains(k))) return;
+            _injectAttempts++;
+            try
+            {
+                object pack = null;
+                var packProp = typeof(LocalizationManager).GetProperty("CurrentPack", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                if (packProp != null)
+                {
+                    try { pack = packProp.GetValue(null); } catch { pack = null; }
+                }
+                if (pack == null)
+                {
+                    foreach (var f in typeof(LocalizationManager).GetFields(BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public))
+                    {
+                        try
+                        {
+                            var ft = f.FieldType;
+                            if (ft.Name.Contains("LocalizationPack"))
+                            {
+                                var val = f.GetValue(null);
+                                if (val != null) { pack = val; break; }
+                            }
+                        }
+                        catch { }
+                    }
+                }
+                if (pack == null)
+                {
+                    if (Main.Settings.VerboseLogging && (_injectAttempts <= 3 || _injectAttempts % 100 == 0))
+                        Main.Log("[DD ProgFix][Loc] EnsureInjected: localization pack still null (attempt " + _injectAttempts + ")");
+                    return;
+                }
+                bool packSwapped = !ReferenceEquals(pack, _lastPack) && _lastPack != null;
+                _lastPack = pack;
+
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+                var dictField = pack.GetType().GetField("m_Strings", flags);
+                if (dictField == null)
+                {
+                    if (Main.Settings.VerboseLogging && (_injectAttempts <= 3 || _injectAttempts % 200 == 0))
+                        Main.Log("[DD ProgFix][Loc] m_Strings field not found on pack type " + pack.GetType().FullName);
+                    return;
+                }
+                var dict = dictField.GetValue(pack) as System.Collections.IDictionary;
+                if (dict == null) return;
+
+                var seType = pack.GetType().GetNestedTypes(BindingFlags.NonPublic | BindingFlags.Public)
+                    .FirstOrDefault(t => t.Name.Contains("StringEntry"));
+                if (seType == null) return;
+                var textField = seType.GetField("Text", flags) ?? seType.GetField("m_Text", flags);
+                var traitsField = seType.GetField("Traits", flags);
+
+                int added = 0; int skipped = 0;
+                // 基础条目
+                foreach (var (key,text) in Entries)
+                {
+                    if (TryAdd(dict, seType, textField, traitsField, key, text)) added++; else skipped++;
+                }
+                // 动态条目（实际的蓝图键）
+                foreach (var kv in DynamicEntries)
+                {
+                    if (TryAdd(dict, seType, textField, traitsField, kv.Key, kv.Value)) added++; else skipped++;
+                }
+                // 在确保基础与动态键后，尝试执行一次奥秘成长文本的追加
+                if (!_arcanaScaled)
+                {
+                    try { ApplyArcanaScalingDescriptions(dict); } catch (Exception exA) { if (Main.Settings.VerboseLogging) Main.Log("[DD ProgFix][Loc] Arcana scale desc error: " + exA.Message); }
+                }
+                if (Main.Settings.VerboseLogging && (added > 0 || packSwapped || _injectAttempts <= 2))
+                    Main.Log($"[DD ProgFix][Loc] Inject attempt #{_injectAttempts} packSwapped={packSwapped} added={added} skippedExisting={skipped}");
+                // 完成启发式
+                bool allPresentNow = DynamicEntries.Keys.All(k => _applied.Contains(k));
+                if (allPresentNow && _injectAttempts > 5 && added == 0 && _arcanaScaled)
+                {
+                    _completedInjection = true;
+                    if (Main.Settings.VerboseLogging) Main.Log("[DD ProgFix][Loc] Injection complete; suppressing further attempts.");
+                }
+            }
+            catch (Exception ex)
+            {
+                if (Main.Settings.VerboseLogging && (_injectAttempts <= 3 || _injectAttempts % 200 == 0))
+                    Main.Log("[DD ProgFix][Loc] EnsureInjected exception: " + ex.Message);
+            }
+        }
+
+        private static bool TryAdd(System.Collections.IDictionary dict, Type seType, FieldInfo textField, FieldInfo traitsField, string key, string text)
+        {
+            try
+            {
+                if (dict.Contains(key)) { _applied.Add(key); return false; }
+                var entry = Activator.CreateInstance(seType);
+                textField?.SetValue(entry, text);
+                if (traitsField != null) { try { traitsField.SetValue(entry, null); } catch { } }
+                dict.Add(key, entry);
+                _applied.Add(key);
+                return true;
+            }
+            catch { return false; }
+        }
+
+        internal static void BindLocalizedStrings(BlueprintFeature wis, BlueprintFeature cha)
+        {
+            try
+            {
+                if (wis != null)
+                {
+                    SetLocKey(wis, "m_DisplayName", WisNameKey);
+                    SetLocKey(wis, "m_Description", WisDescKey);
+                }
+                if (cha != null)
+                {
+                    SetLocKey(cha, "m_DisplayName", ChaNameKey);
+                    SetLocKey(cha, "m_Description", ChaDescKey);
+                }
+            }
+            catch (Exception ex)
+            {
+                if (Main.Settings.VerboseLogging) Main.Log("[DD ProgFix][Loc] BindLocalizedStrings exception: " + ex.Message);
+            }
+        }
+
+        private static void SetLocKey(object fact, string fieldName, string key)
+        {
+            var flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+            // 穿透继承层级
+            FieldInfo fi = null; Type t = fact.GetType();
+            while (t != null && fi == null) { fi = t.GetField(fieldName, flags); t = t.BaseType; }
+            if (fi == null) return;
+            var loc = fi.GetValue(fact);
+            if (loc == null) return;
+            var keyField = loc.GetType().GetField("m_Key", flags);
+            if (keyField == null) return;
+            keyField.SetValue(loc, key);
+        }
+
+        internal static void InstallWatcher()
+        {
+            if (_installedWatcher) return; _installedWatcher = true;
+            try
+            {
+                var go = new GameObject("MDGA_LocWatcher");
+                UnityEngine.Object.DontDestroyOnLoad(go);
+                go.AddComponent<LocWatcher>();
+                InstallLocaleChangedHook();
+            }
+            catch (Exception ex)
+            {
+                if (Main.Settings.VerboseLogging) Main.Log("[DD ProgFix][Loc] Failed to install watcher: " + ex.Message);
+            }
+        }
+
+        internal static void StartDelayed()
+        {
+            if (_delayStarted) return; _delayStarted = true;
+            try
+            {
+                var go = new GameObject("MDGA_LocDelay");
+                UnityEngine.Object.DontDestroyOnLoad(go);
+                go.AddComponent<DelayedInit>();
+                InstallLocaleChangedHook();
+            }
+            catch (Exception ex) { if (Main.Settings.VerboseLogging) Main.Log("[DD ProgFix][Loc] StartDelayed error: " + ex.Message); }
+        }
+
+        private class LocWatcher : MonoBehaviour
+        {
+            private float _timer;
+            private int _burstFrames = 30; // further reduced
+            private int _idleCounter;
+            void Update()
+            {
+                if (_completedInjection) { Destroy(this); return; }
+                if (_burstFrames > 0)
+                {
+                    _burstFrames--;
+                    LocalizationInjector.EnsureInjected();
+                    return;
+                }
+                _timer += Time.unscaledDeltaTime;
+                if (_timer >= 15f) // 更慢的周期检查
+                {
+                    _timer = 0f;
+                    LocalizationInjector.EnsureInjected();
+                }
+                else if (_idleCounter++ % 600 == 0) // 罕见的包切换探测
+                {
+                    var packProp = typeof(LocalizationManager).GetProperty("CurrentPack", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                    var pack = packProp?.GetValue(null);
+                    if (pack != null && !ReferenceEquals(pack, _lastPack))
+                    {
+                        if (Main.Settings.VerboseLogging) Main.Log("[DD ProgFix][Loc] Detected pack swap, reinjecting.");
+                        _lastPack = pack;
+                        _completedInjection = false;
+                        LocalizationInjector.EnsureInjected();
+                    }
+                }
+            }
+        }
+
+        private class DelayedInit : MonoBehaviour
+        {
+            private int _frames;
+            private bool _done;
+            void Update()
+            {
+                if (_done || _completedInjection) { Destroy(this.gameObject); return; }
+                _frames++;
+                if (_frames < 150)
+                {
+                    if (_frames % 50 == 0) LocalizationInjector.EnsureInjected();
+                    return;
+                }
+                LocalizationInjector.EnsureInjected();
+                _done = true;
+                if (Main.Settings.VerboseLogging) Main.Log("[DD ProgFix][Loc] Delayed injection finished after " + _frames + " frames");
+            }
+        }
+
+        internal static void DumpState(BlueprintFeature wis = null, BlueprintFeature cha = null)
+        {
+            if (Main.Settings != null && !Main.Settings.VerboseLogging) return;
+            try
+            {
+                var packProp = typeof(LocalizationManager).GetProperty("CurrentPack", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                var pack = packProp?.GetValue(null);
+                Main.Log("[DD ProgFix][LocDiag] Pack instance=" + (pack==null?"null":pack.ToString()));
+                if (wis != null) LogLocFields(wis, "Wis");
+                if (cha != null) LogLocFields(cha, "Cha");
+            }
+            catch (Exception ex)
+            {
+                Main.Log("[DD ProgFix][LocDiag] Exception: " + ex.Message);
+            }
+        }
+
+        private static void LogLocFields(BlueprintFeature feat, string tag)
+        {
+            try
+            {
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+                FieldInfo fDisp = null, fDesc = null; Type t = feat.GetType();
+                while (t != null && (fDisp == null || fDesc == null)) { fDisp ??= t.GetField("m_DisplayName", flags); fDesc ??= t.GetField("m_Description", flags); t = t.BaseType; }
+                var disp = fDisp?.GetValue(feat);
+                var desc = fDesc?.GetValue(feat);
+                string dispKey = disp?.GetType().GetField("m_Key", flags)?.GetValue(disp) as string;
+                string descKey = desc?.GetType().GetField("m_Key", flags)?.GetValue(desc) as string;
+                Main.Log($"[DD ProgFix][LocDiag] {tag} displayKey={dispKey} descKey={descKey}");
+            }
+            catch (Exception ex) { Main.Log("[DD ProgFix][LocDiag] LogLocFields error: " + ex.Message); }
+        }
+
+        internal static void RegisterFeatureLocalization(BlueprintFeature feat, string display, string description)
+        {
+            try
+            {
+                if (feat == null) return;
+                var displayKey = "MDGA_DD_" + feat.AssetGuid + "_m_DisplayName";
+                var descKey = "MDGA_DD_" + feat.AssetGuid + "_m_Description";
+                RegisterDynamicKey(displayKey, display);
+                RegisterDynamicKey(descKey, description);
+            }
+            catch (Exception ex)
+            {
+                if (Main.Settings.VerboseLogging) Main.Log("[DD ProgFix][Loc] RegisterFeatureLocalization error: " + ex.Message);
+            }
+        }
+
+        private static void ApplyArcanaScalingDescriptions(System.Collections.IDictionary dict)
+        {
+            string suffixEn = " At 5th level this bonus increases to +2 per die, at 10th level to +3, and at 15th level to +4.";
+            string suffixZh = " 在5级时该加成提升为每骰+2，10级为每骰+3，15级为每骰+4。";
+            int patched = 0; int skipped = 0;
+            foreach (var guid in ArcanaGuids)
+            {
+                var feat = ResourcesLibrary.TryGetBlueprint<BlueprintFeature>(guid);
+                if (feat == null) { skipped++; continue; }
+                try
+                {
+                    var flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+                    FieldInfo fDesc = null; Type t = feat.GetType();
+                    while (t != null && fDesc == null) { fDesc = t.GetField("m_Description", flags); t = t.BaseType; }
+                    if (fDesc == null) { skipped++; continue; }
+                    var locObj = fDesc.GetValue(feat);
+                    if (locObj == null) { skipped++; continue; }
+                    var keyField = locObj.GetType().GetField("m_Key", flags);
+                    var textField2 = locObj.GetType().GetField("m_Text", flags);
+                    string origKey = keyField?.GetValue(locObj) as string;
+                    if (!string.IsNullOrEmpty(origKey) && origKey.Contains("MDGAScale")) { skipped++; continue; } // 已重定向
+
+                    string packText = null;
+                    if (!string.IsNullOrEmpty(origKey) && dict.Contains(origKey))
+                    {
+                        var entry = dict[origKey];
+                        var et = entry?.GetType();
+                        var txtF = et?.GetField("Text", flags) ?? et?.GetField("m_Text", flags);
+                        packText = txtF?.GetValue(entry) as string;
+                    }
+                    string baseText = packText ?? (textField2?.GetValue(locObj) as string ?? string.Empty);
+
+                    bool isChinese = baseText.Any(c => c >= '\u4e00' && c <= '\u9fff');
+                    // Avoid duplicate append if already contains both 10th and 15th wording
+                    bool alreadyHas = (baseText.Contains("15级为每骰+4") || baseText.Contains("15th level to +4"));
+                    string newText = alreadyHas ? baseText : baseText + (isChinese ? suffixZh : suffixEn);
+
+                    string newKeyBase = string.IsNullOrEmpty(origKey) ? ("MDGA_ARCANA_DESC_" + guid) : origKey;
+                    string newKey = newKeyBase + "_MDGAScale";
+                    keyField?.SetValue(locObj, newKey);
+                    textField2?.SetValue(locObj, newText);
+                    RegisterDynamicKey(newKey, newText);
+                    patched++;
+                }
+                catch { skipped++; }
+            }
+            if (patched > 0) _arcanaScaled = true; // only lock if success; else allow another attempt
+            if (Main.Settings.VerboseLogging) Main.Log($"[DD ProgFix][Loc] Arcana scaling descriptions patched: {patched} (skipped {skipped})");
+        }
+
+        private static void InstallLocaleChangedHook()
+        {
+            if (_localeHookInstalled) return;
+            try
+            {
+                var lmType = typeof(LocalizationManager);
+                // Try event first
+                var evt = lmType.GetEvent("OnLocaleChanged", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                if (evt != null)
+                {
+                    var handlerType = evt.EventHandlerType;
+                    var invoke = handlerType.GetMethod("Invoke");
+                    var pars = invoke.GetParameters();
+                    // Build dynamic delegate matching signature
+                    Delegate del;
+                    if (pars.Length == 0)
+                    {
+                        Action a = () => LocaleChangedCallback();
+                        del = Delegate.CreateDelegate(handlerType, a.Target, a.Method);
+                    }
+                    else if (pars.Length == 1)
+                    {
+                        try {
+                            var p0Type = pars[0].ParameterType;
+                            var dm = new DynamicMethod("MDGA_LocaleChangedProxy", typeof(void), new Type[] { p0Type }, typeof(LocalizationInjector), true);
+                            var il = dm.GetILGenerator();
+                            il.Emit(OpCodes.Call, typeof(LocalizationInjector).GetMethod(nameof(LocaleChangedCallback), BindingFlags.Static | BindingFlags.NonPublic));
+                            il.Emit(OpCodes.Ret);
+                            del = dm.CreateDelegate(handlerType);
+                        } catch {
+                            // Fallback: create lambda ignoring parameter via reflection
+                            del = Delegate.CreateDelegate(handlerType, typeof(LocalizationInjector).GetMethod(nameof(LocaleChangedCallback), BindingFlags.Static | BindingFlags.NonPublic), true);
+                        }
+                    }
+                    else
+                    {
+                        // Fallback: create lambda with object[] capture
+                        Action a = () => LocaleChangedCallback();
+                        del = Delegate.CreateDelegate(handlerType, a.Target, a.Method, false);
+                    }
+                    evt.AddEventHandler(null, del);
+                    _localeHookInstalled = true;
+                    if (Main.Settings.VerboseLogging) Main.Log("[DD ProgFix][Loc] Installed OnLocaleChanged event hook.");
+                }
+                else
+                {
+                    // 回退方案：如存在则补丁 ChangeLanguage / SetLocale 等方法
+                    var m = lmType.GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+                        .FirstOrDefault(mi => mi.Name.Contains("ChangeLanguage") || mi.Name.Contains("SetLanguage") || mi.Name.Contains("SetLocale"));
+                    if (m != null)
+                    {
+                        var harmony = new Harmony("MDGA.LocalizationHook");
+                        harmony.Patch(m, postfix: new HarmonyMethod(typeof(LocalizationInjector).GetMethod(nameof(LocaleChangedPostfix), BindingFlags.Static | BindingFlags.NonPublic)));
+                        _localeHookInstalled = true;
+                        if (Main.Settings.VerboseLogging) Main.Log("[DD ProgFix][Loc] Patched method " + m.Name + " for locale change hook.");
+                    }
+                    else
+                    {
+                        if (Main.Settings.VerboseLogging) Main.Log("[DD ProgFix][Loc] No locale change event or method found; relying on watcher.");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (Main.Settings.VerboseLogging) Main.Log("[DD ProgFix][Loc] InstallLocaleChangedHook error: " + ex.Message);
+            }
+        }
+
+        private static void LocaleChangedCallback()
+        {
+            try
+            {
+                if (Main.Settings.VerboseLogging) Main.Log("[DD ProgFix][Loc] Locale changed -> reinjection reset");
+                _completedInjection = false;
+                _arcanaScaled = false; // force arcana patch re-run
+                _injectAttempts = 0;
+                EnsureInjected();
+                StartDelayed(); // schedule aggressive retries
+                // Recreate watcher if it was destroyed
+                if (!_installedWatcher) InstallWatcher();
+            }
+            catch (Exception ex)
+            {
+                if (Main.Settings.VerboseLogging) Main.Log("[DD ProgFix][Loc] LocaleChangedCallback error: " + ex.Message);
+            }
+        }
+
+        private static void LocaleChangedPostfix()
+        {
+            LocaleChangedCallback();
+        }
+    }
+}

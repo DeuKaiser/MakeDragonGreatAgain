@@ -1,0 +1,10 @@
+{
+  "Id": "MDGA",
+  "DisplayName": "Make Dragon Great Again",
+  "Author": "V",
+  "Version": "1.0.1",
+  "ManagerVersion": "0.32.4",
+  "AssemblyName": "MDGA.dll",
+  "EntryMethod": "MDGA.Main.Load",
+  "HomePage": "https://github.com/DeuKaiser/MakeDragonGreatAgain"
+}

@@ -1,0 +1,87 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+	  <LangVersion>latest</LangVersion>
+	  <!-- Set to net46 for Kingmaker -->
+	  <LangVersion>latest</LangVersion>
+<!-- Set to net46 for Kingmaker -->
+<TargetFramework>net48</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <BaseOutputPath>E:\我的开拓者mod\MDGA</BaseOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net472" Version="1.0.3" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="0Harmony">
+      <HintPath>E:\SteamLibrary\steamapps\common\Pathfinder Second Adventure\Wrath_Data\Managed\0Harmony.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>E:\SteamLibrary\steamapps\common\Pathfinder Second Adventure\Wrath_Data\Managed\Assembly-CSharp.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp-firstpass">
+      <HintPath>E:\SteamLibrary\steamapps\common\Pathfinder Second Adventure\Wrath_Data\Managed\Assembly-CSharp-firstpass.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="DarkCodex">
+      <HintPath>E:\SteamLibrary\steamapps\common\Pathfinder Second Adventure\Mods\DarkCodex\DarkCodex.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="TabletopTweaks-Core">
+      <HintPath>E:\SteamLibrary\steamapps\common\Pathfinder Second Adventure\Mods\TabletopTweaks-Core\TabletopTweaks-Core.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>E:\SteamLibrary\steamapps\common\Pathfinder Second Adventure\Wrath_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>E:\SteamLibrary\steamapps\common\Pathfinder Second Adventure\Wrath_Data\Managed\UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="UnityModManager">
+      <HintPath>E:\SteamLibrary\steamapps\common\Pathfinder Second Adventure\Wrath_Data\Managed\UnityModManager\UnityModManager.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Microsoft.CSharp" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Info.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- Exclude embedded external mod sources -->
+  <ItemGroup>
+    <Compile Remove="SpellbookMerge-master\**\*.cs" />
+    <None Include="SpellbookMerge-master\**\*.cs" />
+    <Compile Remove="Prestige-Plus-main\**\*.cs" />
+    <None Include="Prestige-Plus-main\**\*.cs" />
+    <Compile Remove="WOTR_PATH_OF_BLING-master\**\*.cs" />
+    <None Include="WOTR_PATH_OF_BLING-master\**\*.cs" />
+    <Compile Remove="DarkCodex-master\**\*.cs" />
+    <None Include="DarkCodex-master\**\*.cs" />
+    <Compile Remove="TabletopTweaks-Core-master\**\*.cs" />
+    <None Include="TabletopTweaks-Core-master\**\*.cs" />
+    <Compile Remove="TabletopTweaks-Base-master\**\*.cs" />
+    <None Include="TabletopTweaks-Base-master\**\*.cs" />
+    <Compile Remove="MicroscopicContentExpansion-main\**\*.cs" />
+    <None Include="MicroscopicContentExpansion-main\**\*.cs" />
+    <Compile Remove="MicroscopicContentExpansion\**\*.cs" />
+    <None Include="MicroscopicContentExpansion\**\*.cs" />
+    <Compile Remove="Mythic-Magic-Mayhem-main\**\*.cs" />
+    <None Include="Mythic-Magic-Mayhem-main\**\*.cs" />
+    <Compile Remove="ToyBox-Wrath-main\**\*.cs" />
+    <None Include="ToyBox-Wrath-main\**\*.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Patch\Components\" />
+  </ItemGroup>
+</Project>
