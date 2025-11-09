@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36408.4 d17.14
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MDGA", "MDGA\MDGA.csproj", "{AC529056-BC7E-4C3E-BF8C-5CD4448CBF56}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{AC529056-BC7E-4C3E-BF8C-5CD4448CBF56}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AC529056-BC7E-4C3E-BF8C-5CD4448CBF56}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AC529056-BC7E-4C3E-BF8C-5CD4448CBF56}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AC529056-BC7E-4C3E-BF8C-5CD4448CBF56}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {8A4548DE-1E8C-4574-9CC4-111C40B13AAF}
+	EndGlobalSection
+EndGlobal
