@@ -9,7 +9,7 @@ using Kingmaker; // for Game.Instance input fallback
 
 namespace MDGA.Patch
 {
-    // ÁÙÊ±µ÷ÊÔÈÈ¼ü£ºÔÚÓÎÏ·ÖĞ°´ F8 Êä³ö¸´ºÏ/ÌìÊ¹Éñ»°·¨Êõ±íĞÅÏ¢
+    // ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½È¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï·ï¿½Ğ°ï¿½ F8 ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½/ï¿½ï¿½Ê¹ï¿½ñ»°·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢
     [DefaultExecutionOrder(9999)]
     internal class GDTempDebug : MonoBehaviour
     {
@@ -22,6 +22,8 @@ namespace MDGA.Patch
             if (_installed) return; _installed = true;
             try
             {
+                // ä»…åœ¨è¯¦ç»†æ—¥å¿—æ¨¡å¼ä¸‹å®‰è£…ä¸´æ—¶è°ƒè¯•ç»„ä»¶
+                if (!Main.Enabled || Main.Settings == null || !Main.Settings.VerboseLogging) return;
                 var go = new GameObject("MDGA_GDTempDebug");
                 GameObject.DontDestroyOnLoad(go);
                 go.hideFlags = HideFlags.DontSave;
@@ -38,8 +40,10 @@ namespace MDGA.Patch
         {
             try
             {
-                // ÏÈÍ¨¹ı·´Éä³¢ÊÔ¾É°æ Input£¨²¿·Ö²Ã¼ô¹¹½¨ÒÆ³ıÁËÖ±½ÓÒıÓÃ·ûºÅ£©
+                // ï¿½ï¿½Í¨ï¿½ï¿½ï¿½ï¿½ï¿½ä³¢ï¿½Ô¾É°ï¿½ Inputï¿½ï¿½ï¿½ï¿½ï¿½Ö²Ã¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ³ï¿½ï¿½ï¿½Ö±ï¿½ï¿½ï¿½ï¿½ï¿½Ã·ï¿½ï¿½Å£ï¿½
                 bool pressed = false;
+                // ä»…åœ¨è¯¦ç»†æ—¥å¿—æ¨¡å¼ä¸‹å“åº” F8ï¼Œé¿å…æ™®é€šä¼šè¯åˆ·å±
+                if (!Main.Enabled || Main.Settings == null || !Main.Settings.VerboseLogging) return;
                 try
                 {
                     var inputType = Type.GetType("UnityEngine.Input, UnityEngine.IMGUIModule");
@@ -56,7 +60,7 @@ namespace MDGA.Patch
                 catch { }
                 if (!pressed)
                 {
-                    // »ØÍË£º¼ì²é Event.current£¨½öÔÚ OnGUI ÓĞĞ§£©»òºöÂÔ
+                    // ï¿½ï¿½ï¿½Ë£ï¿½ï¿½ï¿½ï¿½ Event.currentï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ OnGUI ï¿½ï¿½Ğ§ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
                 }
                 if (pressed) Run();
             }
@@ -67,8 +71,8 @@ namespace MDGA.Patch
         {
             try
             {
-                var mergeGuid = BlueprintGuid.Parse("5bf6f5d4d2e04a1a9f4b4f4b6a9a1111"); // ×Ô¶¨ÒåºÏÊéÌØĞÔ
-                var angelListGuid = BlueprintGuid.Parse("deaffb4218ccf2f419ffd6e41603131a"); // ÌìÊ¹Éñ»°·¨Êõ±í
+                var mergeGuid = BlueprintGuid.Parse("5bf6f5d4d2e04a1a9f4b4f4b6a9a1111"); // ï¿½Ô¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+                var angelListGuid = BlueprintGuid.Parse("deaffb4218ccf2f419ffd6e41603131a"); // ï¿½ï¿½Ê¹ï¿½ñ»°·ï¿½ï¿½ï¿½ï¿½ï¿½
                 var mergeFeat = ResourcesLibrary.TryGetBlueprint<BlueprintFeatureSelectMythicSpellbook>(mergeGuid);
                 var angelList = ResourcesLibrary.TryGetBlueprint<BlueprintSpellList>(angelListGuid);
                 var fld = typeof(BlueprintFeatureSelectMythicSpellbook).GetField("m_MythicSpellList", BindingFlags.Instance | BindingFlags.NonPublic);

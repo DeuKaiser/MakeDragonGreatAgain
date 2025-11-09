@@ -180,7 +180,7 @@ namespace MDGA.AutoMerge
             if (knownTableToUse != null)
                 typeof(BlueprintFeatureSelectMythicSpellbook).GetField("m_SpellKnownForSpontaneous", BindingFlags.Instance | BindingFlags.NonPublic)?.SetValue(_customMerge, knownTableToUse.ToReference<BlueprintSpellsTableReference>());
 
-            // 添加“需要拥有任意一个龙族血统（隐藏未满足时）”的前置条件，未满足时直接不出现，从而回退到原版直接给独立金龙法术书的流程
+            // 添加“需要拥有任意一个龙族血统（隐藏未满足时）”的前置条件
             try
             {
                 var comp = new PrerequisiteFeaturesFromList
@@ -321,7 +321,7 @@ namespace MDGA.AutoMerge
                         foreach (var s in spellsList)
                         {
                             count++;
-                            if (Main.Settings.GoldenDragonVerbose)
+                            if (Main.Settings.VerboseLogging)
                             {
                                 var guid = GetAbilityRefGuid(s);
                                 if (guid != BlueprintGuid.Empty) ids.Add(guid.ToString().Substring(0,8));
@@ -329,7 +329,7 @@ namespace MDGA.AutoMerge
                         }
                     }
                     total += count;
-                    if (Main.Settings.GoldenDragonVerbose) Main.Log($"[GD Merge][ListDiag] L{level}: count={count} guids=[{string.Join(",", ids)}]"); else Main.Log($"[GD Merge][ListDiag] L{level}: count={count}");
+                    if (Main.Settings.VerboseLogging) Main.Log($"[GD Merge][ListDiag] L{level}: count={count} guids=[{string.Join(",", ids)}]"); else Main.Log($"[GD Merge][ListDiag] L{level}: count={count}");
                 }
                 Main.Log("[GD Merge][ListDiag] TOTAL spells=" + total + " label=" + label);
                 Main.Log("[GD Merge][ListDiag] ==== " + label + " END ====");
@@ -354,7 +354,7 @@ namespace MDGA.AutoMerge
                 if (currentIndex < 0)
                 {
                     list.Insert(desiredIndex, targetRef);
-                    if (Main.Settings.GoldenDragonVerbose) Main.Log("[GD Merge] Inserted custom merge feature at index=" + desiredIndex + ".");
+                    if (Main.Settings.VerboseLogging) Main.Log("[GD Merge] Inserted custom merge feature at index=" + desiredIndex + ".");
                 }
                 else if (currentIndex != desiredIndex)
                 {
@@ -363,7 +363,7 @@ namespace MDGA.AutoMerge
                     // 如果移除使 desiredIndex 越界或项数减少，重新校正
                     desiredIndex = Math.Min(1, Math.Max(0, list.Count));
                     list.Insert(desiredIndex, item);
-                    if (Main.Settings.GoldenDragonVerbose) Main.Log($"[GD Merge] Moved custom merge feature from index={currentIndex} to index={desiredIndex}.");
+                    if (Main.Settings.VerboseLogging) Main.Log($"[GD Merge] Moved custom merge feature from index={currentIndex} to index={desiredIndex}.");
                 }
                 if (fi.FieldType.IsArray) fi.SetValue(entry, list.ToArray()); else fi.SetValue(entry, list);
             }

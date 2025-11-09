@@ -92,24 +92,18 @@ namespace MDGA
         static void OnGUI(UnityModManager.ModEntry entry)
         {
             GUILayout.Label("Make Dragon Great Again - Settings", UnityEngine.GUI.skin.label);
-            Settings.EnableDragonDiscipleFix = GUILayout.Toggle(Settings.EnableDragonDiscipleFix, "启用 龙脉术士 5/9 级施法进阶修复 (需要重启)" );
-            Settings.DragonDiscipleFixLevel1 = GUILayout.Toggle(Settings.DragonDiscipleFixLevel1, "额外启用 1 级施法进阶 (10/10, 需要重启)" );
+            Settings.EnableDragonDiscipleFix = GUILayout.Toggle(Settings.EnableDragonDiscipleFix, "启用 龙脉术士 施法者等级修复 (涵盖 1/5/9, 需要重启)" );
             Settings.DragonDiscipleFullBAB = GUILayout.Toggle(Settings.DragonDiscipleFullBAB, "龙脉术士使用全BAB进度 (需要重启)" );
-            Settings.DragonDiscipleDiagnostic = GUILayout.Toggle(Settings.DragonDiscipleDiagnostic, "下次加载输出龙脉术士进阶诊断 (一次性, 需重启)" );
-            Settings.VerboseLogging = GUILayout.Toggle(Settings.VerboseLogging, "详细日志 (调试用)" );
+            Settings.VerboseLogging = GUILayout.Toggle(Settings.VerboseLogging, "详细日志 (调试用, 包含全部模块)" );
             GUILayout.Space(10);
             GUILayout.Label("Golden Dragon 合书", GUI.skin.box);
             Settings.EnableGoldenDragonMerge = GUILayout.Toggle(Settings.EnableGoldenDragonMerge, "启用 金龙合书 (需要重启)" );
-            Settings.GoldenDragonMergeHighSpells = GUILayout.Toggle(Settings.GoldenDragonMergeHighSpells, "并入金龙 8/9/10 环专属法术 (关闭则仅用天使法表)" );
-            Settings.GoldenDragonVerbose = GUILayout.Toggle(Settings.GoldenDragonVerbose, "金龙合书详细日志 (调试)" );
-            Settings.GoldenDragonOverrideAngelMergeText = GUILayout.Toggle(Settings.GoldenDragonOverrideAngelMergeText, "（fallback时）覆盖天使合书文本" );
             GUILayout.Space(4);
             GUILayout.Label("LevelUp UI 自动刷新 (慎用)", GUI.skin.box);
             Settings.EnableUIRefresh = GUILayout.Toggle(Settings.EnableUIRefresh, "启用 选择职业后自动再执行一次机制重算 (避免显示卡死)" );
             GUILayout.Label("默认关闭。只有当升级面板显示未刷新时才开启，避免日志刷屏与性能浪费。", UnityEngine.GUI.skin.label);
             GUILayout.Space(8);
             GUILayout.Label("合书条件: 必须拥有龙族血统 + 目标职业具备 SpellList (固定, 不可关闭)", UnityEngine.GUI.skin.label);
-            GUILayout.Label("(原先的两个可选开关已移除)", UnityEngine.GUI.skin.label);
             GUILayout.Label("更改部分设置后请重新启动游戏以确保蓝图缓存重新构建。", UnityEngine.GUI.skin.box);
         }
 

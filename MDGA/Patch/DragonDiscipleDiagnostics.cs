@@ -9,10 +9,6 @@ using Kingmaker.Designers.Mechanics.Facts;
 
 namespace MDGA.Patch
 {
-    /// <summary>
-    /// 输出龙脉术士进阶的详细特性树，用于定位实际的 AddSpellbookLevel 来源。
-    /// 当 Settings.DragonDiscipleDiagnostic = true 时一次性执行。
-    /// </summary>
     [HarmonyPatch(typeof(BlueprintsCache), nameof(BlueprintsCache.Init))]
     internal static class DragonDiscipleDiagnostics
     {
@@ -25,9 +21,7 @@ namespace MDGA.Patch
         {
             if (_ran) return; _ran = true;
             if (!Main.Enabled) return;
-            if (Main.Settings == null || !Main.Settings.DragonDiscipleDiagnostic) return;
-            Main.Settings.DragonDiscipleDiagnostic = false; // one-shot
-            try { Main.Settings.Save(Main.ModEntry); } catch { }
+            if (Main.Settings == null || !Main.Settings.VerboseLogging) return; // 仅在统一详细日志开启时输出
             try
             {
                 var prog = ResourcesLibrary.TryGetBlueprint<BlueprintProgression>(DDProgression);
@@ -57,7 +51,6 @@ namespace MDGA.Patch
                         bool hasAdd = SafeHasAddSpellbook(f);
                         if (hasAdd) spellAdvTotal++;
                         Main.Log($"[DDDiag]   Feature {f.name} guid={f.AssetGuidThreadSafe} AddSpellbook={hasAdd}");
-                        // If feature is a selection, dig deeper
                         DumpSelectionChildren(f, 2);
                     }
                 }
@@ -80,7 +73,6 @@ namespace MDGA.Patch
                     var raw = fi.GetValue(le);
                     if (raw is BlueprintFeatureBase[] arr) return arr;
                 }
-                // 备用路径：尝试名为 Features 的属性或字段
                 var fi2 = typeof(LevelEntry).GetField("Features", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
                 if (fi2 != null)
                 {
@@ -100,14 +92,13 @@ namespace MDGA.Patch
 
         private static void DumpSelectionChildren(BlueprintFeatureBase feat, int indent)
         {
-            // 一些选择类蓝图派生自 BlueprintFeatureSelection
             var t = feat.GetType();
-            if (!t.Name.Contains("Selection")) return; // 简易筛选
+            if (!t.Name.Contains("Selection")) return;
             try
             {
                 var fiAll = t.GetField("m_AllFeatures", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
                 var fiFeats = t.GetField("m_Features", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-                var refs = new List<BlueprintFeatureReference>();
+                var refs = new System.Collections.Generic.List<BlueprintFeatureReference>();
                 if (fiAll?.GetValue(feat) is BlueprintFeatureReference[] all) refs.AddRange(all);
                 if (fiFeats?.GetValue(feat) is BlueprintFeatureReference[] feats) refs.AddRange(feats);
                 if (refs.Count == 0) return;

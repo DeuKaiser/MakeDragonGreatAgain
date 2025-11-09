@@ -12,6 +12,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="AssemblyPublicizer" Version="1.0.2">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net472" Version="1.0.3" />
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" />
   </ItemGroup>
@@ -22,7 +26,8 @@
       <Private>False</Private>
     </Reference>
     <Reference Include="Assembly-CSharp">
-      <HintPath>E:\SteamLibrary\steamapps\common\Pathfinder Second Adventure\Wrath_Data\Managed\Assembly-CSharp.dll</HintPath>
+      <HintPath Condition="Exists('$(MSBuildProjectDirectory)\lib\Assembly-CSharp_publicized.dll')">$(MSBuildProjectDirectory)\lib\Assembly-CSharp_publicized.dll</HintPath>
+      <HintPath Condition="!Exists('$(MSBuildProjectDirectory)\lib\Assembly-CSharp_publicized.dll')">E:\SteamLibrary\steamapps\common\Pathfinder Second Adventure\Wrath_Data\Managed\Assembly-CSharp.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Assembly-CSharp-firstpass">
@@ -84,4 +89,21 @@
   <ItemGroup>
     <Folder Include="Patch\Components\" />
   </ItemGroup>
+
+  <!-- Publicizer configuration -->
+  <PropertyGroup>
+    <!-- 修改为你的游戏安装目录根路径 -->
+    <WrathPath>E:\SteamLibrary\steamapps\common\Pathfinder Second Adventure</WrathPath>
+    <!-- 输出到项目目录下 lib 文件夹，比 $(SolutionDir) 更稳 -->
+    <PublicizeOutputDir>$(MSBuildProjectDirectory)\lib\</PublicizeOutputDir>
+  </PropertyGroup>
+
+  <Target Name="Publicize" AfterTargets="Clean">
+    <ItemGroup>
+      <!-- Use $(KingmakerPath) for Kingmaker, 这里是 Wrath -->
+      <Assemblies Include="$(WrathPath)\Wrath_Data\Managed\Assembly-CSharp.dll" />
+    </ItemGroup>
+
+    <PublicizeTask InputAssemblies="@(Assemblies)" OutputDir="$(PublicizeOutputDir)" />
+  </Target>
 </Project>

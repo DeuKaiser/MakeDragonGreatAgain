@@ -4,11 +4,11 @@ using System.Reflection;
 using HarmonyLib;
 using Kingmaker.Blueprints;
 using Kingmaker.Blueprints.Classes;
-using Kingmaker.Blueprints.JsonSystem; // Îª BlueprintsCache Ìí¼Ó
+using Kingmaker.Blueprints.JsonSystem; // Îª BlueprintsCache ï¿½ï¿½ï¿½ï¿½
 
 namespace MDGA.Patch
 {
-    // ¸üÉî²ãµÄÔËĞĞÊ±²å×®£ºÍ¨¹ı¶¯Ì¬²¹¶¡¼ÇÂ¼ÑªÍ³Ñ¡ÔñÊ± FeatureSelectionState.CanSelect µÄ½á¹û
+    // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½×®ï¿½ï¿½Í¨ï¿½ï¿½ï¿½ï¿½Ì¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Â¼ÑªÍ³Ñ¡ï¿½ï¿½Ê± FeatureSelectionState.CanSelect ï¿½Ä½ï¿½ï¿½
     [HarmonyPatch(typeof(BlueprintsCache), nameof(BlueprintsCache.Init))]
     internal static class BloodlineSelectionDeepDebug_Init
     {
@@ -16,7 +16,8 @@ namespace MDGA.Patch
         static void Postfix()
         {
             if (_installed) return; _installed = true;
-            if (!Main.Enabled) return;
+            // ä»…åœ¨å¼€å¯ç»Ÿä¸€çš„è¯¦ç»†æ—¥å¿—æ—¶å®‰è£…æ·±åº¦è°ƒè¯•è¡¥ä¸
+            if (!Main.Enabled || Main.Settings == null || !Main.Settings.VerboseLogging) return;
             try { BloodlineSelectionDeepDebug.Install(); } catch (Exception ex) { Main.Log("[BloodlineDeepDebug] Install error: " + ex.Message); }
         }
     }
@@ -28,19 +29,19 @@ namespace MDGA.Patch
         {
             _harmony = new Harmony("MDGA.BloodlineSelectionDeepDebug");
             var t = AccessTools.TypeByName("Kingmaker.UnitLogic.Class.LevelUp.Selections.FeatureSelectionState");
-            if (t == null) { Main.Log("[BloodlineDeepDebug] FeatureSelectionState type not found ¨C skipping."); return; }
+            if (t == null) { Main.Log("[BloodlineDeepDebug] FeatureSelectionState type not found ï¿½C skipping."); return; }
             var mi = AccessTools.Method(t, "CanSelect", new Type[] { typeof(BlueprintFeature) });
-            if (mi == null) { Main.Log("[BloodlineDeepDebug] CanSelect method not found ¨C skipping."); return; }
+            if (mi == null) { Main.Log("[BloodlineDeepDebug] CanSelect method not found ï¿½C skipping."); return; }
             var pre = new HarmonyMethod(typeof(BloodlineSelectionDeepDebug).GetMethod(nameof(Prefix), BindingFlags.Static | BindingFlags.NonPublic));
             var post = new HarmonyMethod(typeof(BloodlineSelectionDeepDebug).GetMethod(nameof(Postfix), BindingFlags.Static | BindingFlags.NonPublic));
             _harmony.Patch(mi, pre, post);
             Main.Log("[BloodlineDeepDebug] Patched FeatureSelectionState.CanSelect");
         }
 
-        // »º´æ·´Éä³ÉÔ±
-        private static FieldInfo _fiSelection; // m_Selection »ò Selection
+        // ï¿½ï¿½ï¿½æ·´ï¿½ï¿½ï¿½Ô±
+        private static FieldInfo _fiSelection; // m_Selection ï¿½ï¿½ Selection
         private static PropertyInfo _piSelection;
-        private static FieldInfo _fiItems; // m_Items£¨ÁĞ±í£©£¬ÓÃÓÚÒÑÌôÑ¡¼ÆÊı
+        private static FieldInfo _fiItems; // m_Itemsï¿½ï¿½ï¿½Ğ±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ñ¡ï¿½ï¿½ï¿½ï¿½
 
         private static object GetSelection(object state)
         {

@@ -1,9 +1,7 @@
 ﻿using System;
 using System.Linq;
 using System.Reflection;
-using System.Collections.Generic; // 新增
 using HarmonyLib;
-using Kingmaker;
 using Kingmaker.Blueprints;
 using Kingmaker.Blueprints.Classes;
 using Kingmaker.Blueprints.Classes.Spells; // 用于 ApplySpellbook 与相关类型
@@ -57,9 +55,12 @@ namespace MDGA.Patch
             }
             try
             {
-                // 扩展诊断阶段 1（结构枚举）
-                try { DD_FeatureHelpers.DumpBlueprintFieldLayouts(); } catch { }
-                try { DD_FeatureHelpers.DumpCacheExtended(); } catch { }
+                // 扩展诊断阶段（仅在 VerboseLogging 下输出结构）
+                if (Main.Settings.VerboseLogging)
+                {
+                    try { DD_FeatureHelpers.DumpBlueprintFieldLayouts(); } catch { }
+                    try { DD_FeatureHelpers.DumpCacheExtended(); } catch { }
+                }
 
                 var ddClass = ResourcesLibrary.TryGetBlueprint<BlueprintCharacterClass>(DragonDiscipleClassGuid);
                 var progression = ResourcesLibrary.TryGetBlueprint<BlueprintProgression>(DragonDiscipleProgressionGuid);
@@ -68,8 +69,8 @@ namespace MDGA.Patch
                     Main.Log("[DD ProgFix] Class or progression not found");
                     return;
                 }
-                // 调整 SkipLevels（去除 5/9，视设置可去除 1）
-                var targetLevels = Main.Settings.DragonDiscipleFixLevel1 ? new[] { 1, 5, 9 } : new[] { 5, 9 };
+                // 调整 SkipLevels（移除 1/5/9 级阻断）
+                var targetLevels = new[] { 1, 5, 9 };
                 var skip = ddClass.GetComponents<SkipLevelsForSpellProgression>().FirstOrDefault();
                 if (skip != null && skip.Levels != null && skip.Levels.Length > 0)
                 {
@@ -82,7 +83,7 @@ namespace MDGA.Patch
                 {
                     if (!Main.Settings.DragonDiscipleFullBAB)
                     {
-                        Main.Log("[DD ProgFix] Full BAB toggle not enabled – skip.");
+                        if (Main.Settings.VerboseLogging) Main.Log("[DD ProgFix] Full BAB toggle not enabled – skip.");
                     }
                     else
                     {
@@ -123,9 +124,11 @@ namespace MDGA.Patch
                 // 扩展属性加成
                 try { DD_FeatureHelpers.EnsureDragonDiscipleAbilityBonuses(progression); } catch (Exception exFeat) { Main.Log("[DD ProgFix] Ability bonus extension error: " + exFeat.Message); }
 
-                // 诊断：注入后输出 3/6/8 级
-                try { DD_FeatureHelpers.DumpLevels(progression, new int[] { 3, 6, 8 }); } catch { }
-                //try { DD_FeatureHelpers.RetroApplyFacts(); } catch { }
+                // 诊断：注入后输出 3/6/8 级（仅详细日志）
+                if (Main.Settings.VerboseLogging)
+                {
+                    try { DD_FeatureHelpers.DumpLevels(progression, new int[] { 3, 6, 8 }); } catch { }
+                }
                 try { LocalizationInjector.EnsureInjected(); LocalizationInjector.InstallWatcher(); } catch { }
             }
             catch (System.Exception ex)
@@ -184,7 +187,7 @@ namespace MDGA.Patch
             try
             {
                 if (!Main.Enabled) return;
-                if (Main.Settings == null || !Main.Settings.EnableDragonDiscipleFix || !Main.Settings.DragonDiscipleFixLevel1) return;
+                if (Main.Settings == null || !Main.Settings.EnableDragonDiscipleFix) return; // 合并后不再单独检测 L1 开关
                 if (state?.SelectedClass == null || unit == null) return;
                 if (state.Mode == LevelUpState.CharBuildMode.CharGen) return; // 避免角色创建 UI 的预处理阶段
                 if (unit.Unit == null || !unit.Unit.IsMainCharacter || !unit.Unit.IsPlayerFaction) return;
@@ -209,7 +212,7 @@ namespace MDGA.Patch
                     .FirstOrDefault();
                 if (book == null)
                 {
-                    Main.Log("[DD L1 Manual] No qualifying spontaneous arcane spellbook found – skip.");
+                    if (Main.Settings.VerboseLogging) Main.Log("[DD L1 Manual] No qualifying spontaneous arcane spellbook found – skip.");
                     Processed.Add(key);
                     return;
                 }
@@ -233,13 +236,7 @@ namespace MDGA.Patch
                     return;
                 }
 
-                // 记录此单位+法术书期望的最终基础等级，供 Commit 时强制（洗点可能回滚预览变更）
-                try
-                {
-                    string bkey = unique + "|" + book.Blueprint.AssetGuid.ToString();
-                    ExpectedAfter[bkey] = after;
-                }
-                catch { }
+                try { ExpectedAfter[unique + "|" + book.Blueprint.AssetGuid.ToString()] = after; } catch { }
 
                 var selection = state.DemandSpellSelection(book.Blueprint, book.Blueprint.SpellList);
                 if (selection == null)
@@ -257,9 +254,9 @@ namespace MDGA.Patch
                     int diff = 0;
                     if (table != null)
                     {
-                        int oldCount = System.Math.Max(0, table.GetCount(oldIdx, i));
-                        int newCount = System.Math.Max(0, table.GetCount(newIdx, i));
-                        diff = System.Math.Max(0, newCount - oldCount);
+                        int oldCount = Math.Max(0, table.GetCount(oldIdx, i));
+                        int newCount = Math.Max(0, table.GetCount(newIdx, i));
+                        diff = Math.Max(0, newCount - oldCount);
                     }
                     selection.SetLevelSpells(i, diff);
                 }
@@ -414,16 +411,22 @@ namespace MDGA.Patch
             // 获取或创建统一特性（Ranks=3）。附加 AddStatBonusPerFeatureRank 组件。
             _wisUnified = ResourcesLibrary.TryGetBlueprint<BlueprintFeature>(NormalizeDragonDiscipleClass.DD_WisdomFeatureGuid) ??
                           CreateUnifiedFeature(NormalizeDragonDiscipleClass.DD_WisdomFeatureGuid, "DragonDiscipleWisdom", StatType.Wisdom,
-                              "属性增强：感知+2", "达到3级后，龙脉术士使角色的感知值+2；达到6级后，再+2；达到10级后，再+2（共+6）。");
+                              "属性增强：{g|Encyclopedia:Wisdom}感知{/g}+2", "达到3级后，龙脉术士使角色的{g|Encyclopedia:Wisdom}感知{/g}值+2；达到6级后，再+2；达到10级后，再+2（共+6）。");
             _chaUnified = ResourcesLibrary.TryGetBlueprint<BlueprintFeature>(NormalizeDragonDiscipleClass.DD_CharismaFeatureGuid) ??
                           CreateUnifiedFeature(NormalizeDragonDiscipleClass.DD_CharismaFeatureGuid, "DragonDiscipleCharisma", StatType.Charisma,
-                              "属性增强：魅力+2", "达到3级后，龙脉术士使角色的魅力值+2；达到6级后，再+2；达到10级后，再+2（共+6）。");
+                              "属性增强：{g|Encyclopedia:Charisma}魅力{/g}+2", "达到3级后，龙脉术士使角色的{g|Encyclopedia:Charisma}魅力{/g}值+2；达到6级后，再+2；达到10级后，再+2（共+6）。");
 
             // Ensure original Intelligence feature allows 3 ranks so it can be granted at 3/6/10
             var intFeat = ResourcesLibrary.TryGetBlueprint<BlueprintFeature>(NormalizeDragonDiscipleClass.DD_IntelligenceFeatureGuid);
             if (intFeat != null)
             {
                 TrySetRanks(intFeat, 3);
+                // 更新智力特性的显示名称与描述保持与新增的感知/魅力一致的格式（加入百科标记）
+                var intDisplay = "属性增强：{g|Encyclopedia:Intelligence}智力{/g}+2";
+                var intDesc = "达到3级后，龙脉术士使角色的{g|Encyclopedia:Intelligence}智力{/g}值+2；达到6级后，再+2；达到10级后，再+2（共+6）。";
+                ApplyLoc(intFeat, intDisplay, intDesc);
+                LocalizationInjector.RegisterFeatureLocalization(intFeat, intDisplay, intDesc);
+                Main.Log("[DD ProgFix] Updated Intelligence feature localization for multi-rank progression (with glossary tags).");
             }
 
             // 从力量特性复制图标以保持视觉一致
@@ -431,6 +434,8 @@ namespace MDGA.Patch
             if (strength != null)
             {
                 CopyIcon(strength, _wisUnified); CopyIcon(strength, _chaUnified);
+                var intFeatIcon = ResourcesLibrary.TryGetBlueprint<BlueprintFeature>(NormalizeDragonDiscipleClass.DD_IntelligenceFeatureGuid);
+                CopyIcon(strength, intFeatIcon); // 也确保智力图标统一
             }
         }
 
