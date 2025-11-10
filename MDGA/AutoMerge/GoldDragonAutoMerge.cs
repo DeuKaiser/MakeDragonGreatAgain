@@ -33,6 +33,8 @@ namespace MDGA.AutoMerge
         private const string GoldenDragonClassGuid = "daf1235b6217787499c14e4e32142523"; // 金龙神话职业
         private const string ExternalGoldDragonSpellbookGuid = "9a9ced35-fa75-4287-bc87-ba97e29812c5";
         private const string GoldDragonSpellbookGuid = "614b5ef6df084725aa872d43e0d0cd1e"; // 原版金龙法术书
+    // 混血术士专用法术书（用于允许 Crossblooded 参与合书）
+    private const string CrossbloodedSorcererSpellbookGuid = "cb0be5988031ebe4c947086a1170eacc";
         // 旧的复合神话列表 GUID，保留用于向后兼容（不再创建）
         private static readonly BlueprintGuid GD_CompositeMythicListGuid = BlueprintGuid.Parse("9d2c8f6c4d4f47d4846f42d6a2b70055");
 
@@ -61,6 +63,17 @@ namespace MDGA.AutoMerge
             BlueprintGuid.Parse("9c5ed34089fedf54ba8d0f43565bcc91"),
             BlueprintGuid.Parse("01e7aab638d6a0b43bc4e9d5b49e68d9"),
             BlueprintGuid.Parse("3867419bf47841b428333808dfdf4ae0"),
+            // Crossblooded secondary draconic bloodline progressions (10 colors) — treat as requisite to allow merge
+            BlueprintGuid.Parse("be355f1518587224799e6c125aad2ac0"), // Gold
+            BlueprintGuid.Parse("a335def5677a4dc46bab211b30a9f33c"), // Green
+            BlueprintGuid.Parse("076d1648e1341f841a222de5b89ba215"), // Silver
+            BlueprintGuid.Parse("0970d63bc8e90274a90f6c001318df77"), // White
+            BlueprintGuid.Parse("12484c4d15c3e134f9fd23931c38e996"), // Red
+            BlueprintGuid.Parse("cbc80f3fdc72aac4bb6963efe3062473"), // Blue
+            BlueprintGuid.Parse("601387ac1873bba448bddcfbf00af8d7"), // Black
+            BlueprintGuid.Parse("b7555ce6cfc7fc042bb7b701d2618307"), // Brass
+            BlueprintGuid.Parse("b71dc10096302384c901787a40b81fbf"), // Bronze
+            BlueprintGuid.Parse("c0684cd2e00de724990bb389e672db90"), // Copper
         };
 
         private static bool IsChinese()
@@ -173,6 +186,14 @@ namespace MDGA.AutoMerge
             catch { }
             var allowed = BuildDynamicAllowedSpellbooks();
             typeof(BlueprintFeatureSelectMythicSpellbook).GetField("m_AllowedSpellbooks", BindingFlags.Instance | BindingFlags.NonPublic)?.SetValue(_customMerge, allowed);
+            try
+            {
+                var names = allowed?.Select(r => r?.Get()?.name + ":" + (r?.Get()?.AssetGuid.ToString() ?? ""))?.ToArray() ?? Array.Empty<string>();
+                Main.Log($"[GD Merge][AllowedSB] Set on custom merge: count={(allowed==null?0:allowed.Length)}");
+                if (Main.Settings.VerboseLogging)
+                    Main.Log($"[GD Merge][AllowedSB] -> [\n  {string.Join(",\n  ", names)}\n]");
+            }
+            catch (Exception ex) { Main.Log("[GD Merge][AllowedSB] Post-set summary error: " + ex.Message); }
             // 仅使用金龙神话法术列表进行合书
             typeof(BlueprintFeatureSelectMythicSpellbook).GetField("m_MythicSpellList", BindingFlags.Instance | BindingFlags.NonPublic)?.SetValue(_customMerge, goldMythicList.ToReference<BlueprintSpellListReference>());
             // 自发已知表优先使用金龙，找不到则回退天使
@@ -180,9 +201,21 @@ namespace MDGA.AutoMerge
             if (knownTableToUse != null)
                 typeof(BlueprintFeatureSelectMythicSpellbook).GetField("m_SpellKnownForSpontaneous", BindingFlags.Instance | BindingFlags.NonPublic)?.SetValue(_customMerge, knownTableToUse.ToReference<BlueprintSpellsTableReference>());
 
-            // 添加“需要拥有任意一个龙族血统（隐藏未满足时）”的前置条件
+            // 添加“需要拥有任意一个龙族血统（隐藏未满足时）”的前置条件（包含混血术士主/副血系的动态收集）
             try
             {
+                var baseRefs = DraconicRequisiteGuids
+                    .Select(g => ResourcesLibrary.TryGetBlueprint<BlueprintFeature>(g))
+                    .Where(b => b != null)
+                    .Select(b => b.ToReference<BlueprintFeatureReference>())
+                    .ToList();
+                var dynamic = FindDraconicRequisiteFeatures();
+                foreach (var f in dynamic)
+                {
+                    var r = f.ToReference<BlueprintFeatureReference>();
+                    if (!baseRefs.Any(x => x.Guid == r.Guid)) baseRefs.Add(r);
+                }
+
                 var comp = new PrerequisiteFeaturesFromList
                 {
                     Group = Prerequisite.GroupType.Any,
@@ -190,14 +223,14 @@ namespace MDGA.AutoMerge
                     CheckInProgression = true,
                     HideInUI = true,
                 };
-                var refs = DraconicRequisiteGuids
-                    .Select(g => ResourcesLibrary.TryGetBlueprint<BlueprintFeature>(g))
-                    .Where(b => b != null)
-                    .Select(b => b.ToReference<BlueprintFeatureReference>())
-                    .ToArray();
                 var field = typeof(PrerequisiteFeaturesFromList).GetField("m_Features", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-                field?.SetValue(comp, refs);
+                field?.SetValue(comp, baseRefs.ToArray());
                 AddComponent(_customMerge, comp);
+
+                if (Main.Settings.VerboseLogging)
+                {
+                    Main.Log($"[GD Merge] Draconic requisite features count={baseRefs.Count} (static={DraconicRequisiteGuids.Length}, dynamic+dedup={baseRefs.Count - DraconicRequisiteGuids.Length})");
+                }
             }
             catch { }
             ApplyLocalizedText(_customMerge);
@@ -350,6 +383,7 @@ namespace MDGA.AutoMerge
                 var list = raw is BlueprintFeatureBaseReference[] arr ? arr.ToList() : raw as List<BlueprintFeatureBaseReference> ?? new List<BlueprintFeatureBaseReference>();
                 var targetRef = _customMerge.ToReference<BlueprintFeatureBaseReference>();
                 int desiredIndex = Math.Min(1, Math.Max(0, list.Count)); // 尽量放在第二项
+                int beforeCount = list.Count;
                 int currentIndex = list.FindIndex(r => r?.Get()?.AssetGuid == GD_MergeFeatureGuid);
                 if (currentIndex < 0)
                 {
@@ -366,6 +400,23 @@ namespace MDGA.AutoMerge
                     if (Main.Settings.VerboseLogging) Main.Log($"[GD Merge] Moved custom merge feature from index={currentIndex} to index={desiredIndex}.");
                 }
                 if (fi.FieldType.IsArray) fi.SetValue(entry, list.ToArray()); else fi.SetValue(entry, list);
+                try
+                {
+                    Main.Log($"[GD Merge] Progression placement: prog={prog.name} guid={prog.AssetGuid} level={entry.Level} beforeCount={beforeCount} afterCount={list.Count} targetIndex={Math.Min(desiredIndex, list.Count-1)}");
+                    if (Main.Settings.VerboseLogging)
+                    {
+                        // 列出前后若干相邻项，帮助确认插入位置
+                        int idx = Math.Min(desiredIndex, list.Count-1);
+                        int from = Math.Max(0, idx - 2);
+                        int to = Math.Min(list.Count - 1, idx + 2);
+                        for (int i = from; i <= to; i++)
+                        {
+                            var f = list[i]?.Get();
+                            Main.Log($"[GD Merge]   [{i}] {f?.name ?? "null"} guid={(f==null?"":f.AssetGuid.ToString())}");
+                        }
+                    }
+                }
+                catch (Exception ex) { Main.Log("[GD Merge] Progression placement log error: " + ex.Message); }
             }
             catch (Exception ex) { Main.Log("[GD Merge] EnsureProgressionHasMergeFeature error: " + ex.Message); }
         }
@@ -412,29 +463,102 @@ namespace MDGA.AutoMerge
                     foreach (var cls in classes)
                     {
                         if (cls == null) continue; if (cls.IsMythic) continue; if (cls.Spellbook == null) continue; if (cls.Spellbook.SpellList == null) continue;
-                        if (_externalGoldDragonSpellbookPresent && cls.Spellbook.AssetGuid == BlueprintGuid.Parse(ExternalGoldDragonSpellbookGuid)) continue;
-                        if (cls.AssetGuid == BlueprintGuid.Parse(GoldenDragonClassGuid)) continue; // self
+                        bool excluded = false; string reason = "";
+                        if (_externalGoldDragonSpellbookPresent && cls.Spellbook.AssetGuid == BlueprintGuid.Parse(ExternalGoldDragonSpellbookGuid)) { excluded = true; reason = "external-GD-spellbook"; }
+                        else if (cls.AssetGuid == BlueprintGuid.Parse(GoldenDragonClassGuid)) { excluded = true; reason = "self-GD-class"; }
+
+                        if (Main.Settings.VerboseLogging)
+                        {
+                            Main.Log($"[GD Merge][AllowedSB] Scan class: {cls.name} classGuid={cls.AssetGuid} mythic={cls.IsMythic} spellbook={(cls.Spellbook==null?"null":cls.Spellbook.name)} sbGuid={(cls.Spellbook==null?"":cls.Spellbook.AssetGuid.ToString())} hasList={(cls.Spellbook?.SpellList!=null)}");
+                        }
+
+                        if (excluded)
+                        {
+                            if (Main.Settings.VerboseLogging) Main.Log($"[GD Merge][AllowedSB]  -> exclude: {cls.name} reason={reason}");
+                            continue;
+                        }
                         list.Add(cls.Spellbook.ToReference<BlueprintSpellbookReference>());
+                        if (Main.Settings.VerboseLogging) Main.Log($"[GD Merge][AllowedSB]  -> include spellbook: {cls.Spellbook.name} guid={cls.Spellbook.AssetGuid}");
+
+                        // 额外处理：术士（Sorcerer）存在“混血术士(Crossblooded)”替换法术书，需将该专用法术书一并加入允许列表
+                        try
+                        {
+                            var clsName = cls.name ?? string.Empty;
+                            if (clsName.IndexOf("Sorcerer", StringComparison.OrdinalIgnoreCase) >= 0)
+                            {
+                                var cross = ResourcesLibrary.TryGetBlueprint<BlueprintSpellbook>(CrossbloodedSorcererSpellbookGuid);
+                                if (cross != null && cross.SpellList != null)
+                                {
+                                    var crossRef = cross.ToReference<BlueprintSpellbookReference>();
+                                    if (!list.Any(r => r != null && r.Guid == crossRef.Guid))
+                                    {
+                                        list.Add(crossRef);
+                                        if (Main.Settings.VerboseLogging) Main.Log($"[GD Merge][AllowedSB]  -> include Crossblooded spellbook: {cross.name} guid={cross.AssetGuid}");
+                                    }
+                                }
+                                else if (Main.Settings.VerboseLogging)
+                                {
+                                    Main.Log("[GD Merge][AllowedSB]  -> Crossblooded spellbook not found or has no list, guid=" + CrossbloodedSorcererSpellbookGuid);
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            if (Main.Settings.VerboseLogging) Main.Log("[GD Merge][AllowedSB] Crossblooded inject error: " + ex.Message);
+                        }
                     }
                 }
-                return list.Distinct().ToArray();
+                var finalArr = list.Distinct().ToArray();
+                try
+                {
+                    var finalNames = finalArr.Select(r => r?.Get()?.name + ":" + (r?.Get()?.AssetGuid.ToString() ?? ""));
+                    Main.Log($"[GD Merge][AllowedSB] Final allowed count={finalArr.Length}");
+                    if (Main.Settings.VerboseLogging) Main.Log($"[GD Merge][AllowedSB] Final list -> [\n  {string.Join(",\n  ", finalNames)}\n]");
+                }
+                catch (Exception ex) { Main.Log("[GD Merge][AllowedSB] Final summary error: " + ex.Message); }
+                return finalArr;
             }
             catch (Exception ex) { Main.Log("[GD Merge] BuildDynamicAllowedSpellbooks error: " + ex.Message); }
             return Array.Empty<BlueprintSpellbookReference>();
         }
 
-        // 选择限制补丁（保持不变）
+        // 选择限制补丁（扩展龙血识别，覆盖混血术士主/副血）
         [HarmonyPatch(typeof(BlueprintFeatureSelectMythicSpellbook), nameof(BlueprintFeatureSelectMythicSpellbook.CanSelect))]
         private static class CanSelectPatch
         {
             private static readonly Regex RxRequisite = new Regex("^Draconic.*BloodlineRequisiteFeature$", RegexOptions.Compiled);
+            private static bool NameLooksDraconic(string n)
+            {
+                if (string.IsNullOrEmpty(n)) return false;
+                // 覆盖：普通术士、混血副血、探索者等命名
+                if (n.IndexOf("Draconic", StringComparison.OrdinalIgnoreCase) >= 0 && n.IndexOf("Bloodline", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+                if (n.IndexOf("CrossbloodedSecondaryBloodlineDraconic", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+                if (n.IndexOf("SeekerBloodlineDraconic", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+                if (RxRequisite.IsMatch(n)) return true;
+                return false;
+            }
             private static bool HasDraconic(UnitDescriptor unit)
             {
                 if (unit == null) return false;
                 try
                 {
+                    var guidSet = new HashSet<BlueprintGuid>(DraconicRequisiteGuids);
                     foreach (var fact in unit.Facts.List)
-                    { var bp = fact?.Blueprint; if (bp == null) continue; var n = bp.name ?? string.Empty; if (RxRequisite.IsMatch(n)) return true; if (n.Contains("Draconic") && n.Contains("Bloodline")) return true; }
+                    {
+                        var bp = fact?.Blueprint; if (bp == null) continue; var n = bp.name ?? string.Empty;
+                        // 1) 直接按 GUID 判断（包含普通龙血前置特性 + 混血次级龙血进阶）
+                        if (guidSet.Contains(bp.AssetGuid))
+                        {
+                            if (Main.Settings.VerboseLogging) Main.Log($"[GD Merge] Draconic detected by GUID: {n} guid={bp.AssetGuid}");
+                            return true;
+                        }
+                        // 2) 名称兜底（兼容不同命名模式）
+                        if (NameLooksDraconic(n))
+                        {
+                            if (Main.Settings.VerboseLogging) Main.Log($"[GD Merge] Draconic detected by name: {n} guid={bp.AssetGuid}");
+                            return true;
+                        }
+                    }
                 }
                 catch { }
                 return false;
@@ -546,6 +670,51 @@ namespace MDGA.AutoMerge
                 f?.SetValue(bp, newArr);
             }
             catch { }
+        }
+
+        // 动态枚举蓝图库，收集所有“龙系血统前置/必备”特性（包含混血术士的副血）
+        private static IEnumerable<BlueprintFeature> FindDraconicRequisiteFeatures()
+        {
+            var result = new List<BlueprintFeature>();
+            try
+            {
+                var cache = ResourcesLibrary.BlueprintsCache; if (cache == null) return result;
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+                foreach (var f in cache.GetType().GetFields(flags))
+                {
+                    var ft = f.FieldType;
+                    if (!ft.IsGenericType || ft.GetGenericTypeDefinition() != typeof(Dictionary<,>)) continue;
+                    var args = ft.GetGenericArguments();
+                    if (args.Length != 2 || args[0] != typeof(BlueprintGuid) || !typeof(SimpleBlueprint).IsAssignableFrom(args[1])) continue;
+                    var dict = f.GetValue(cache) as System.Collections.IDictionary; if (dict == null) continue;
+                    foreach (System.Collections.DictionaryEntry entry in dict)
+                    {
+                        if (entry.Value is BlueprintFeature feat)
+                        {
+                            var n = feat.name ?? string.Empty;
+                            // 扩展匹配：去除对 "Requisite" 关键词的强制要求，以捕获 Crossblooded 次级龙血等进阶特性。
+                            // 逻辑：凡名称同时包含 Draconic 与 Bloodline 即视为龙系血统相关；另外保留特例（Crossblooded / Seeker）。
+                            bool looksDraconic =
+                                (n.IndexOf("Draconic", StringComparison.OrdinalIgnoreCase) >= 0 && n.IndexOf("Bloodline", StringComparison.OrdinalIgnoreCase) >= 0)
+                                || (n.IndexOf("CrossbloodedSecondaryBloodline", StringComparison.OrdinalIgnoreCase) >= 0 && n.IndexOf("Draconic", StringComparison.OrdinalIgnoreCase) >= 0)
+                                || (n.IndexOf("SeekerBloodlineDraconic", StringComparison.OrdinalIgnoreCase) >= 0);
+                            if (looksDraconic)
+                            {
+                                // 排除无效/重复
+                                if (!result.Any(r => r.AssetGuid == feat.AssetGuid)) result.Add(feat);
+                                if (Main.Settings.VerboseLogging)
+                                    Main.Log("[GD Merge] (+Dyn) Draconic match added: name=" + n + " guid=" + feat.AssetGuid);
+                            }
+                        }
+                    }
+                }
+                if (Main.Settings.VerboseLogging) Main.Log("[GD Merge] Dynamic draconic feature total=" + result.Count);
+            }
+            catch (Exception ex)
+            {
+                if (Main.Settings.VerboseLogging) Main.Log("[GD Merge] FindDraconicRequisiteFeatures error: " + ex.Message);
+            }
+            return result;
         }
     }
 }
