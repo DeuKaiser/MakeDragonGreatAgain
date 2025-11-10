@@ -16,11 +16,11 @@ namespace MDGA.Patch
     internal static class LocalizationInjector
     {
         private const string WisNameKey = "MDGA.DD.WisdomBonus.Name";
-    private const string WisDescKey = "MDGA.DD.WisdomBonus.Desc"; // 旧版描述 Key（保留兼容，实际多级描述使用动态注册）
+        private const string WisDescKey = "MDGA.DD.WisdomBonus.Desc"; // 旧版描述 Key（保留兼容，实际多级描述使用动态注册）
         private const string ChaNameKey = "MDGA.DD.CharismaBonus.Name";
-    private const string ChaDescKey = "MDGA.DD.CharismaBonus.Desc"; // 旧版描述 Key（同上，与多级版本已分离）
+        private const string ChaDescKey = "MDGA.DD.CharismaBonus.Desc"; // 旧版描述 Key（同上，与多级版本已分离）
 
-    // 基础静态条目：早期简单+2 感知 / +2 魅力占位。后续真正显示用动态条目覆盖，这里仍注入以保证 fallback。
+        // 基础静态条目：早期简单+2 感知 / +2 魅力占位。后续真正显示用动态条目覆盖，这里仍注入以保证 fallback。
         private static readonly (string key,string text)[] Entries = new (string,string)[]
         {
             // 仅作兜底占位：正常情况下会被 RegisterFeatureLocalization 的动态条目覆盖
@@ -28,7 +28,7 @@ namespace MDGA.Patch
             (ChaNameKey, "属性增强：魅力+2")
         };
 
-    // 动态条目集合：为每个克隆/新建的特性生成唯一 key（例如 MDGA_DD_<guid>_m_DisplayName），文本在运行期注册。
+        // 动态条目集合：为每个克隆/新建的特性生成唯一 key（例如 MDGA_DD_<guid>_m_DisplayName），文本在运行期注册。
         private static readonly Dictionary<string,string> DynamicEntries = new();
 
         private static bool _installedWatcher;
@@ -36,7 +36,7 @@ namespace MDGA.Patch
         private static object _lastPack;
         private static int _injectAttempts;
         private static bool _delayStarted;
-    private static bool _completedInjection; // 注入完成标记：所有动态 key 均已落地且不再需要轮询
+        private static bool _completedInjection; // 注入完成标记：所有动态 key 均已落地且不再需要轮询
         private static bool _localeHookInstalled;
 
         private static readonly BlueprintGuid[] ArcanaGuids = new[] {
@@ -60,7 +60,7 @@ namespace MDGA.Patch
             {
                 DynamicEntries[key] = text;
                 if (Main.Settings.VerboseLogging) Main.Log("[DD ProgFix][Loc] Registered dynamic key " + key);
-                // If we previously thought injection complete, but a new key appears, reopen injection.
+                // 如果之前认为注入已完成，但现在出现新 key，则重新开启注入流程
                 if (_completedInjection && !_applied.Contains(key))
                 {
                     _completedInjection = false; // allow EnsureInjected to run again
@@ -79,7 +79,7 @@ namespace MDGA.Patch
 
         internal static void EnsureInjected()
         {
-            // 触发条件：未完成注入 或 新增了尚未写入 pack 的动态 key。
+            // 触发条件：未完成注入 或 存在尚未写入包的动态 key。
             if (_completedInjection && DynamicEntries.Keys.All(k => _applied.Contains(k))) return;
             _injectAttempts++;
             try
@@ -249,7 +249,7 @@ namespace MDGA.Patch
         private class LocWatcher : MonoBehaviour
         {
             private float _timer;
-            private int _burstFrames = 30; // 初始高频阶段用于快速覆盖 QC 的早期写入
+            private int _burstFrames = 30; // 初始高频阶段用于快速覆盖 QuickLocalization 的早期写入
             private int _idleCounter;
             void Update()
             {
@@ -266,7 +266,7 @@ namespace MDGA.Patch
                     _timer = 0f;
                     LocalizationInjector.EnsureInjected();
                 }
-                else if (_idleCounter++ % 600 == 0) // 低频探测 pack 是否被替换（QC 或其他本地化操作）
+                else if (_idleCounter++ % 600 == 0) // 低频探测 pack 是否被替换
                 {
                     var packProp = typeof(LocalizationManager).GetProperty("CurrentPack", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
                     var pack = packProp?.GetValue(null);
@@ -283,13 +283,13 @@ namespace MDGA.Patch
 
         private class DelayedInit : MonoBehaviour
         {
-            private int _frames; // 延迟阶段用于在语言包真正稳定后再次注入
+            private int _frames; // 延迟阶段：等待其他本地化覆盖完成后再最后补一次
             private bool _done;
             void Update()
             {
                 if (_done || _completedInjection) { Destroy(this.gameObject); return; }
                 _frames++;
-                if (_frames < 150) // 前 150 帧内每 50 帧重试一次，等待 QC 结束初始化
+                if (_frames < 150) // 前 150 帧内每 50 帧重试一次
                 {
                     if (_frames % 50 == 0) LocalizationInjector.EnsureInjected();
                     return;
@@ -352,7 +352,7 @@ namespace MDGA.Patch
         private static void ApplyArcanaScalingDescriptions(System.Collections.IDictionary dict)
         {
             string suffixEn = " At 5th level this bonus increases to +2 per die, at 10th level to +3, and at 15th level to +4.";
-            string suffixZh = " ��5��ʱ�üӳ�����Ϊÿ��+2��10��Ϊÿ��+3��15��Ϊÿ��+4��";
+            string suffixZh = " 在5级时该加值变为每骰+2，在10级为每骰+3，在15级为每骰+4。";
             int patched = 0; int skipped = 0;
             foreach (var guid in ArcanaGuids)
             {
@@ -369,7 +369,7 @@ namespace MDGA.Patch
                     var keyField = locObj.GetType().GetField("m_Key", flags);
                     var textField2 = locObj.GetType().GetField("m_Text", flags);
                     string origKey = keyField?.GetValue(locObj) as string;
-                    if (!string.IsNullOrEmpty(origKey) && origKey.Contains("MDGAScale")) { skipped++; continue; } // ���ض���
+                    if (!string.IsNullOrEmpty(origKey) && origKey.Contains("MDGAScale")) { skipped++; continue; }
 
                     string packText = null;
                     if (!string.IsNullOrEmpty(origKey) && dict.Contains(origKey))
@@ -382,8 +382,7 @@ namespace MDGA.Patch
                     string baseText = packText ?? (textField2?.GetValue(locObj) as string ?? string.Empty);
 
                     bool isChinese = baseText.Any(c => c >= '\u4e00' && c <= '\u9fff');
-                    // Avoid duplicate append if already contains both 10th and 15th wording
-                    bool alreadyHas = (baseText.Contains("15��Ϊÿ��+4") || baseText.Contains("15th level to +4"));
+                    bool alreadyHas = (baseText.Contains("15级") || baseText.Contains("15th level") || baseText.Contains("15th") || baseText.Contains("15级为每骰+4"));
                     string newText = alreadyHas ? baseText : baseText + (isChinese ? suffixZh : suffixEn);
 
                     string newKeyBase = string.IsNullOrEmpty(origKey) ? ("MDGA_ARCANA_DESC_" + guid) : origKey;
@@ -395,7 +394,7 @@ namespace MDGA.Patch
                 }
                 catch { skipped++; }
             }
-            if (patched > 0) _arcanaScaled = true; // only lock if success; else allow another attempt
+            if (patched > 0) _arcanaScaled = true;
             if (Main.Settings.VerboseLogging) Main.Log($"[DD ProgFix][Loc] Arcana scaling descriptions patched: {patched} (skipped {skipped})");
         }
 
@@ -405,14 +404,13 @@ namespace MDGA.Patch
             try
             {
                 var lmType = typeof(LocalizationManager);
-                // Try event first
+                // 首先尝试事件（优先，无侵入）
                 var evt = lmType.GetEvent("OnLocaleChanged", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
                 if (evt != null)
                 {
                     var handlerType = evt.EventHandlerType;
                     var invoke = handlerType.GetMethod("Invoke");
                     var pars = invoke.GetParameters();
-                    // Build dynamic delegate matching signature
                     Delegate del;
                     if (pars.Length == 0)
                     {
@@ -429,13 +427,11 @@ namespace MDGA.Patch
                             il.Emit(OpCodes.Ret);
                             del = dm.CreateDelegate(handlerType);
                         } catch {
-                            // Fallback: create lambda ignoring parameter via reflection
                             del = Delegate.CreateDelegate(handlerType, typeof(LocalizationInjector).GetMethod(nameof(LocaleChangedCallback), BindingFlags.Static | BindingFlags.NonPublic), true);
                         }
                     }
                     else
                     {
-                        // Fallback: create lambda with object[] capture
                         Action a = () => LocaleChangedCallback();
                         del = Delegate.CreateDelegate(handlerType, a.Target, a.Method, false);
                     }
@@ -445,7 +441,7 @@ namespace MDGA.Patch
                 }
                 else
                 {
-                    // ���˷�����������򲹶� ChangeLanguage / SetLocale �ȷ���
+                    // 若没有事件，则回退：Patch ChangeLanguage / SetLanguage / SetLocale 之类的方法
                     var m = lmType.GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
                         .FirstOrDefault(mi => mi.Name.Contains("ChangeLanguage") || mi.Name.Contains("SetLanguage") || mi.Name.Contains("SetLocale"));
                     if (m != null)
@@ -499,10 +495,10 @@ namespace MDGA.Patch
     // 若找不到原始 key（极少数情况），则回退到动态 key 绑定方案（DragonMightExpansion 已注册）。
     internal static class DragonMightOverrideHelper
     {
-    private static bool _doneOnce; // 首次成功后标记；再次语言切换或 pack swap 时置脏（_dirty）以重新覆盖。
+        private static bool _doneOnce; // 首次成功后标记；再次语言切换或 pack swap 时置脏（_dirty）以重新覆盖。
         private static string _cachedOrigKey; // DragonMight 原始描述 key
         private static readonly BlueprintGuid DragonMightGuid = BlueprintGuid.Parse("bfc6aa5be6bc41f68ca78aef37913e9f");
-    private static bool _dirty = true; // 是否需要重新尝试覆盖（语言切换 / pack 被替换）
+        private static bool _dirty = true; // 是否需要重新尝试覆盖（语言切换 / pack 被替换）
 
         internal static void MarkDirty() { _dirty = true; }
 
@@ -561,7 +557,7 @@ namespace MDGA.Patch
             }
         }
 
-    // 语言判定：尝试从 LocalizationManager.CurrentLocale 与系统语言推断是否中文
+        // 语言判定：尝试从 LocalizationManager.CurrentLocale 与系统语言推断是否中文
         private static bool LocalizationInjectorExtension_IsChinese()
         {
             try

@@ -4,22 +4,21 @@ using System;
 
 namespace MDGA.Patch
 {
-    // ÍÌµô PrestigePlus µÄ FixNoToybox2 Ç°×ºÅ×³öµÄ InvalidOperationException£¨¡°Sequence contains no elements¡±£©¡£
-    // ¸ÃÒì³£»áÖĞÖ¹ RefreshData£¬µ¼ÖÂ½ø¶ÈĞĞ£¨ÈçÊõÊ¿ÑªÍ³¹ì£©ÔÚÁúÃÅÍ½Éı¼¶Ê±ÏûÊ§¡£
-    // ÎÒÃÇ½öÆÁ±ÎÕâ¸öÌØ¶¨ÇÒÎŞº¦µÄÇé¿ö£¬ÆäËûÒì³£ÈÔÕÕ³£Å×³ö¡£
+    // æŸäº›ç¯å¢ƒä¸‹ï¼ˆPrestigePlus / FixNoToybox2 ç­‰ç»„åˆï¼‰ä¼šå¯¼è‡´å…³é—­èŒä¸šè¿›åº¦é¢æ¿æ—¶æŠ›å‡º
+    // InvalidOperationException("Sequence contains no elements")ï¼Œè¿›è€Œé˜»æ–­åˆ·æ–°ã€‚
+    // é€šè¿‡ finalizer åæ‰è¯¥ç‰¹å®šå¼‚å¸¸ï¼Œé¿å… UI åˆ·æ–°é“¾è·¯è¢«åˆ‡æ–­ã€‚
     [HarmonyPatch(typeof(ClassProgressionVM), "DisposeImplementation")]
     internal static class UiCompat_SuppressFixNoToybox2
     {
-        // ¼´±ãÏÈÇ°µÄÇ°×º/Ô­·½·¨Å×Òì³££¬Harmony µÄ finalizer Ò²»áÔËĞĞ¡£
         static Exception Finalizer(Exception __exception)
         {
             if (__exception is InvalidOperationException ioe && ioe.Message.Contains("Sequence contains no elements"))
             {
                 if (Main.Settings.VerboseLogging)
-                    Main.Log("[UICompat] Swallowed FixNoToybox2 empty sequence InvalidOperationException in ClassProgressionVM.DisposeImplementation.");
-                return null; // suppress
+                    Main.Log("[UICompat] Swallowed empty-sequence InvalidOperationException in ClassProgressionVM.DisposeImplementation.");
+                return null;
             }
-            return __exception; // keep others
+            return __exception;
         }
     }
 }

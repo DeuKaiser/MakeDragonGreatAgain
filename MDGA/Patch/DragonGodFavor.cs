@@ -13,7 +13,7 @@ using Kingmaker.Localization;
 
 namespace MDGA.Patch
 {
-    // 在金龙道途 1（全局MR=8）额外给予一次「神话能力」选择
+    // 金龙道途额外恩赐：在金龙 1/2/3 级各额外给予一次“神话能力”选择
     [HarmonyPatch(typeof(BlueprintsCache), nameof(BlueprintsCache.Init))]
     internal static class DragonGodFavor
     {
@@ -42,7 +42,7 @@ namespace MDGA.Patch
                     return;
                 }
 
-                // 准备“龙神亲睐”——作为一个选择器，展示我们自定义的名字/描述，但内部提供与原版神话能力选择相同的候选
+                // 准备“龙神亲睐”——作为一个选择器，展示自定义名称/描述，但候选沿用原版神话能力选择
                 var favorSel = ResourcesLibrary.TryGetBlueprint<BlueprintFeatureSelection>(FavorSelectionGuid);
                 if (favorSel == null)
                 {
@@ -62,16 +62,16 @@ namespace MDGA.Patch
             }
         }
 
-    private static void InjectSelectionIntoLevel(BlueprintProgression prog, BlueprintFeatureSelection favorSelection, int level)
+        private static void InjectSelectionIntoLevel(BlueprintProgression prog, BlueprintFeatureSelection favorSelection, int level)
         {
             try
             {
-        var le = prog.LevelEntries?.FirstOrDefault(e => e.Level == level); if (le == null) return;
+                var le = prog.LevelEntries?.FirstOrDefault(e => e.Level == level); if (le == null) return;
                 var fi = typeof(LevelEntry).GetField("m_Features", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
                 var raw = fi?.GetValue(le);
                 var list = raw is BlueprintFeatureBaseReference[] arr ? arr.ToList() : raw as System.Collections.Generic.List<BlueprintFeatureBaseReference> ?? new System.Collections.Generic.List<BlueprintFeatureBaseReference>();
 
-                // 清理旧版本可能注入的占位特性；保留原版自带的神话能力选择（不要覆盖/删除它）
+                // 清理旧版本可能注入的占位特性；保留原版自带的神话能力选择（不覆盖/不删除）
                 list.RemoveAll(r => r?.Get()?.AssetGuid == FavorFeatureGuid);
 
                 // 若尚未加入我们的选择器，则添加
@@ -195,13 +195,13 @@ namespace MDGA.Patch
         {
             try
             {
-                // 1) 尝试通过名称匹配
+                // 1) 名称匹配
                 var sel = FindSelectionByPredicate(s =>
                     (s.name != null && s.name.IndexOf("MythicAbilitySelection", StringComparison.OrdinalIgnoreCase) >= 0)
                 );
                 if (sel != null) return sel;
 
-                // 2) 尝试通过显示名包含
+                // 2) 显示名包含
                 sel = FindSelectionByPredicate(s =>
                 {
                     string title = GetDisplayNameText(s);
@@ -211,7 +211,7 @@ namespace MDGA.Patch
                 });
                 if (sel != null) return sel;
 
-                // 3) 通过候选特征分组启发：选择器中包含大量分组为 MythicAbility 的要素
+                // 3) 候选分组启发：大部分要素属于 MythicAbility
                 sel = FindSelectionByPredicate(s =>
                 {
                     try
@@ -233,7 +233,7 @@ namespace MDGA.Patch
                                 if (g != null && string.Equals(g.ToString(), "MythicAbility", StringComparison.OrdinalIgnoreCase)) { marked++; break; }
                             }
                         }
-                        return count > 5 && marked >= count / 2; // 大部分要素属于神话能力
+                        return count > 5 && marked >= count / 2;
                     }
                     catch { return false; }
                 });

@@ -19,7 +19,7 @@ using Kingmaker.Enums.Damage; // DamageEnergyType
 namespace MDGA.Patch
 {
     [HarmonyPatch(typeof(DraconicBloodlineArcana), nameof(DraconicBloodlineArcana.OnEventAboutToTrigger))]
-    [HarmonyPriority(Priority.First)] // ÏÈÓÚÆäËûÇ°×ºÔËĞĞ£¬ÒÔ±ãÍêÈ«Ìæ»»Ô­°æÂß¼­
+    [HarmonyPriority(Priority.First)] // å…ˆäºåŸæœ‰é€»è¾‘æ‰§è¡Œï¼Œä»¥ä¾¿å®Œå…¨æ›¿æ¢åŠ å€¼ç®—æ³•
     internal static class DraconicBloodlineArcanaScalingPatch
     {
         private static readonly BlueprintGuid SorcererClassGuid = BlueprintGuid.Parse("b3a505fb61437dc4097f43c3f8f9a4cf");
@@ -41,7 +41,7 @@ namespace MDGA.Patch
 
         private static bool _locAugmented;
 
-        // ±¾µØ»¯²¹³ä£¨±£³Ö²»±ä£©
+        // è¿½åŠ æè¿°ï¼ˆæœ¬åœ°åŒ–å±‚é¢åè¡¥è¯´æ˜ï¼‰
         [HarmonyPatch(typeof(BlueprintsCache), nameof(BlueprintsCache.Init))]
         private static class DraconicArcanaLocalizationAugment
         {
@@ -63,9 +63,9 @@ namespace MDGA.Patch
                             if (locObj == null) continue;
                             var textField = locObj.GetType().GetField("m_Text", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
                             var current = textField?.GetValue(locObj) as string ?? string.Empty;
-                            if (current.Contains("5th") || current.Contains("5¼¶")) continue; // already patched
+                            if (current.Contains("5th") || current.Contains("5çº§")) continue; // å·²åŒ…å«
                             string suffixEn = " (Damage per die increases to +2 at 5th level, +3 at 10th, and +4 at 15th.)";
-                            string suffixZh = "£¨¸Ã¼Ó³ÉÔÚ5¼¶ÌáÉıÎªÃ¿÷»+2£¬10¼¶ÎªÃ¿÷»+3£¬15¼¶ÎªÃ¿÷»+4¡££©";
+                            string suffixZh = " åœ¨5çº§æ—¶è¯¥åŠ å€¼å˜ä¸ºæ¯éª°+2ï¼Œåœ¨10çº§ä¸ºæ¯éª°+3ï¼Œåœ¨15çº§ä¸ºæ¯éª°+4ã€‚";
                             bool hasChinese = current.Any(c => c >= '\u4e00' && c <= '\u9fff');
                             string newText = hasChinese ? (current + suffixZh) : (current + suffixEn + suffixZh);
                             textField?.SetValue(locObj, newText);
@@ -126,7 +126,7 @@ namespace MDGA.Patch
                 if (f == null) continue;
                 try
                 {
-                    // ³¢ÊÔ EntityFact ÉÏ³£¼ûµÄÔËĞĞÊ±×é¼şÊı×é×Ö¶Î
+                    // åœ¨ EntityFact ä¸Šå°è¯•é€šè¿‡ m_Components/Components å­—æ®µæŸ¥æ‰¾
                     var ft = f.GetType();
                     var compField = ft.GetField("m_Components", flags) ?? ft.GetField("Components", flags);
                     var compObj = compField?.GetValue(f);
@@ -138,7 +138,7 @@ namespace MDGA.Patch
                             if (object.ReferenceEquals(c, component)) return f;
                         }
                     }
-                    // Ä³Ğ©°æ±¾¸ÄÎªÊôĞÔ±©Â¶
+                    // æŸäº›ç‰ˆæœ¬æ”¹ä¸ºå±æ€§æš´éœ²
                     var compProp = ft.GetProperty("Components", flags) ?? ft.GetProperty("AllComponents", flags);
                     var compVal = compProp?.GetValue(f, null) as System.Collections.IEnumerable;
                     if (compVal != null)
@@ -177,18 +177,18 @@ namespace MDGA.Patch
                 var context = evt.Reason.Context;
                 var ability = context?.SourceAbility;
                 bool isSpell = ability != null && ability.IsSpell;
-                // Í¨¹ıÃèÊö·ûÊ¶±ğÍÂÏ¢£»²¿·ÖÍÂÏ¢Îª Su/Ex µ«ÈÔ´øÓĞ BreathWeapon ±ê¼Ç
+                // é€šè¿‡æè¿°ç¬¦è¯†åˆ«ï¼šå‘¼å¸æ­¦å™¨ï¼ˆBreathWeaponï¼‰å¯è§†ä½œæ³•æœ¯æ¥æºå¤„ç†
                 bool isBreath = (context?.SpellDescriptor.HasAnyFlag(SpellDescriptor.BreathWeapon) ?? false);
 
-                // gate by element: either descriptor includes the arcana element, or (for breath) damage bundle matches arcana energy
+                // æŒ‰å…ƒç´  gatingï¼šè¦ä¹ˆæè¿°ç¬¦åŒ…å«å¯¹åº”å…ƒç´ ï¼Œè¦ä¹ˆï¼ˆåæ¯ï¼‰ä¼¤å®³åŒ…ç±»å‹åŒ¹é…
                 bool elementMatch = (context != null && context.SpellDescriptor.HasAnyFlag(__instance.SpellDescriptor))
                                     || (isBreath && evt.DamageBundle.Any(d => DescriptorMatchesEnergy(__instance.SpellDescriptor, d)));
                 if (!elementMatch) return true;
 
-                // SpellsOnly£ºÔÊĞíÍÂÏ¢ÈÆ¹ı¸ÃÃÅ¼÷
+                // SpellsOnlyï¼šå…è®¸åæ¯ä¾‹å¤–
                 if (__instance.SpellsOnly && !isSpell && !isBreath) return true;
 
-                // ÎïÀíÀàÄÜÁ¦Í¨³£ÅÅ³ı£»ÍÂÏ¢ÀıÍâ
+                // ç‰©ç†èƒ½åŠ›ç›´æ¥è·³è¿‡ï¼ˆåæ¯é™¤å¤–ï¼‰
                 if (ability != null && ability.Type == AbilityType.Physical && !isBreath) return true;
 
                 var prog = evt.Initiator?.Descriptor?.Progression;
@@ -201,12 +201,12 @@ namespace MDGA.Patch
                 if (dd != null) eff += prog.GetClassLevel(dd);
 
                 int tier = eff >= 15 ? 4 : eff >= 10 ? 3 : eff >= 5 ? 2 : 1;
-                if (tier <= 1) return true; // let vanilla handle unscaled +1
+                if (tier <= 1) return true; // äº¤ç»™åŸç‰ˆ +1 å¤„ç†
 
-                // ¿É¿¿½âÎöËùÓĞÕß fact£º
-                // 1) ×é¼şÉÏµÄÊôĞÔ/×Ö¶Î£¨Fact/Owner£©
-                // 2) ÔÚµ¥Î»µÄ facts ÖĞ²éÕÒ°üº¬¸Ã×é¼şÊµÀıµÄÏî
-                // 3) ×îºóÊÖ¶Î£º»ùÓÚ°ÂÃØ GUID/Ãû³ÆµÄÆô·¢Ê½
+                // å°è¯•å®šä½è‡ªèº« factï¼ˆä½œä¸ºä¿®æ­£æ¥æºï¼‰
+                // 1) å±æ€§æˆ–å­—æ®µ Fact/Owner
+                // 2) åœ¨å•ä½ facts ä¸­åæŸ¥åŒ…å«è¯¥ç»„ä»¶çš„ fact
+                // 3) å…œåº•ï¼šæŒ‰ GUID/åç§°çŒœæµ‹ï¼ˆä¸‹é¢çš„é€»è¾‘ï¼‰
                 EntityFact arcanaFact = GetOwningFactFromPropertyOrField(__instance);
                 if (arcanaFact == null)
                 {
@@ -229,7 +229,6 @@ namespace MDGA.Patch
                                     if (string.IsNullOrEmpty(name)) continue;
                                     var lower = name.ToLowerInvariant();
                                     if (lower.Contains("draconic") && lower.Contains("arcana")) { arcanaFact = f; break; }
-                                    if (lower.Contains("°Â·¨") && lower.Contains("Áú")) { arcanaFact = f; break; }
                                 }
                             }
                         }
@@ -243,7 +242,7 @@ namespace MDGA.Patch
                     if (dmg.Precision) continue;
                     var dice = dmg.Dice.ModifiedValue;
                     if (dice.Rolls <= 0) continue;
-                    // ¶ÔÍÂÏ¢£¬ĞèÒªÈ·±£ÄÜÁ¿ÀàĞÍÓëÃèÊö·ûÆ¥Åä£»¶ÔÓÚ·¨ÊõÔ­°æÒÑ¼ì²é
+                    // åæ¯éœ€é€é¡¹åˆ¤å®šå…ƒç´ åŒ¹é…ï¼›å¦åˆ™éµå¾ªäº‹ä»¶æ•´ä½“æè¿°ç¬¦
                     if (isBreath && !DescriptorMatchesEnergy(__instance.SpellDescriptor, dmg)) continue;
 
                     int basePerDie = 1;
@@ -262,11 +261,11 @@ namespace MDGA.Patch
                 {
                     Main.Log($"[ArcanaScale] Applied scaled modifier via Prefix eff={eff} tier={tier} ability={ability?.NameSafe()} fact={(arcanaFact?.Blueprint?.name ?? "<null>")}");
                 }
-                return false; // ÒÖÖÆÔ­°æ£¨±ÜÃâ¶îÍâ +1 µÄÒ»ĞĞ£©
+                return false; // è·³è¿‡åŸç‰ˆï¼ˆåŸç‰ˆåª +1/éª°ï¼‰
             }
             catch (Exception ex)
             {
-                Main.Log("[ArcanaScale] Ç°×ºÒì³££¨Ëõ·Å»ØÍËµ½Ô­°æ£©£º" + ex.Message);
+                Main.Log("[ArcanaScale] Prefix exception (falling back to vanilla): " + ex.Message);
                 return true;
             }
         }

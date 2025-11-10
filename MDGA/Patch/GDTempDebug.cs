@@ -9,7 +9,7 @@ using Kingmaker; // for Game.Instance input fallback
 
 namespace MDGA.Patch
 {
-    // ��ʱ�����ȼ�������Ϸ�а� F8 �������/��ʹ�񻰷�������Ϣ
+    // 临时调试组件：在游戏内按 F8 输出当前合书相关蓝图与列表诊断信息
     [DefaultExecutionOrder(9999)]
     internal class GDTempDebug : MonoBehaviour
     {
@@ -40,7 +40,7 @@ namespace MDGA.Patch
         {
             try
             {
-                // ��ͨ�����䳢�Ծɰ� Input�����ֲü������Ƴ���ֱ�����÷��ţ�
+                // 优先用反射访问 Input.GetKeyDown（避免模块依赖差异）
                 bool pressed = false;
                 // 仅在详细日志模式下响应 F8，避免普通会话刷屏
                 if (!Main.Enabled || Main.Settings == null || !Main.Settings.VerboseLogging) return;
@@ -60,7 +60,7 @@ namespace MDGA.Patch
                 catch { }
                 if (!pressed)
                 {
-                    // ���ˣ���� Event.current������ OnGUI ��Ч�������
+                    // 若需要，可在 OnGUI 分支使用 Event.current，但此处保持轻量
                 }
                 if (pressed) Run();
             }
@@ -71,8 +71,8 @@ namespace MDGA.Patch
         {
             try
             {
-                var mergeGuid = BlueprintGuid.Parse("5bf6f5d4d2e04a1a9f4b4f4b6a9a1111"); // �Զ����������
-                var angelListGuid = BlueprintGuid.Parse("deaffb4218ccf2f419ffd6e41603131a"); // ��ʹ�񻰷�����
+                var mergeGuid = BlueprintGuid.Parse("5bf6f5d4d2e04a1a9f4b4f4b6a9a1111"); // 自定义金龙合书特性
+                var angelListGuid = BlueprintGuid.Parse("deaffb4218ccf2f419ffd6e41603131a"); // 天使神话法术表
                 var mergeFeat = ResourcesLibrary.TryGetBlueprint<BlueprintFeatureSelectMythicSpellbook>(mergeGuid);
                 var angelList = ResourcesLibrary.TryGetBlueprint<BlueprintSpellList>(angelListGuid);
                 var fld = typeof(BlueprintFeatureSelectMythicSpellbook).GetField("m_MythicSpellList", BindingFlags.Instance | BindingFlags.NonPublic);

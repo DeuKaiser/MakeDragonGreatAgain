@@ -6,8 +6,9 @@ using Kingmaker.Blueprints.Classes;
 
 namespace MDGA.Patch
 {
-    // ÔËĞĞÆÚºóÖÃ±£ÕÏ£ºÔÚËùÓĞ±¾µØ»¯Ä£×é£¨Èç QuickLocalization£©¸²¸ÇÍêÌõÄ¿Ö®ºó£¬
-    // ÈçÓĞĞèÒªÍ¨¹ıÇ¨ÒÆµ½ĞÂµÄÎ¨Ò»¼ü£¬È·±£ÁúÂö°ÂÃØÃèÊö°üº¬³É³¤ÎÄ±¾¡£
+    // è¿Ÿåä¿®å¤ï¼šåœ¨å…¶å®ƒæœ¬åœ°åŒ–/æè¿°ä¿®æ”¹ Modï¼ˆå¦‚ QuickLocalizationï¼‰åŠ è½½å®Œæˆåï¼Œ
+    // å†æ¬¡æ£€æŸ¥é¾™æ—ç§˜æ³•ç‰¹æ€§æè¿°ï¼Œè‹¥ç¼ºå°‘â€œ5/10/15 çº§æ¯éª°åŠ å€¼ +2/+3/+4â€è¯´æ˜åˆ™è¿½åŠ ã€‚
+    // ä½¿ç”¨å»¶è¿ŸæŒ‚ä»¶æ–¹å¼é¿å…ä¸æ—©æœŸå†™å…¥å†²çªã€‚
     internal class ArcanaLateDescriptionFix : MonoBehaviour
     {
         private static readonly BlueprintGuid[] ArcanaGuids = new[] {
@@ -38,9 +39,9 @@ namespace MDGA.Patch
         {
             if (_done) { Destroy(gameObject); return; }
             _frames++;
-            // µÈ´ıÒ»¶ÎÊ±¼äºóÔÙÆô¶¯£¬ÒÔ±ãÆäËûÄ£×éÍê³É£¨QuickLocalization ºÜÔç¼ÓÔØ£¬µ«ÎÒÃÇÈÔÉÔ×÷µÈ´ı£©
-            if (_frames < 300) return; // Ô¼ 5 Ãë
-            if (_frames % 60 != 0) return; // Ö®ºóÃ¿Ãë³¢ÊÔÒ»´Î
+            // å‰ç½®ç­‰å¾…ï¼šç¡®ä¿å…¶å®ƒæœ¬åœ°åŒ–ä¿®æ”¹å®Œæˆï¼ˆçº¦ 5 ç§’ï¼‰
+            if (_frames < 300) return;
+            if (_frames % 60 != 0) return; // ä¹‹åæ¯ç§’å°è¯•ä¸€æ¬¡
             _attempts++;
             try
             {
@@ -59,12 +60,12 @@ namespace MDGA.Patch
                         var textField = locObj.GetType().GetField("m_Text", flags);
                         string key = keyField?.GetValue(locObj) as string;
                         string text = textField?.GetValue(locObj) as string ?? string.Empty;
-                        bool hasScaling = text.Contains("15¼¶") || text.Contains("15th level");
+                        bool hasScaling = text.Contains("15çº§") || text.Contains("15th level") || text.Contains("15th") || text.Contains("15çº§ä¸ºæ¯éª°+4");
                         if (!hasScaling)
                         {
                             bool zh = text.Any(c => c >= '\u4e00' && c <= '\u9fff');
                             string suffixEn = " At 5th level this bonus increases to +2 per die, at 10th level to +3, and at 15th level to +4.";
-                            string suffixZh = " ÔÚ5¼¶Ê±¸Ã¼Ó³ÉÌáÉıÎªÃ¿÷»+2£¬10¼¶ÎªÃ¿÷»+3£¬15¼¶ÎªÃ¿÷»+4¡£";
+                            string suffixZh = " åœ¨5çº§æ—¶è¯¥åŠ å€¼å˜ä¸ºæ¯éª°+2ï¼Œåœ¨10çº§ä¸ºæ¯éª°+3ï¼Œåœ¨15çº§ä¸ºæ¯éª°+4ã€‚";
                             string newText = text + (zh ? suffixZh : suffixEn);
                             string newKeyBase = string.IsNullOrEmpty(key) ? ("MDGA_ARCANA_DESC_" + guid) : key;
                             if (!newKeyBase.Contains("MDGAScale")) newKeyBase += "_MDGAScaleLate";

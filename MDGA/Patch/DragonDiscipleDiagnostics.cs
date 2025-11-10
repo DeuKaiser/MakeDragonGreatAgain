@@ -21,7 +21,7 @@ namespace MDGA.Patch
         {
             if (_ran) return; _ran = true;
             if (!Main.Enabled) return;
-            if (Main.Settings == null || !Main.Settings.VerboseLogging) return; // ½öÔÚÍ³Ò»ÏêÏ¸ÈÕÖ¾¿ªÆôÊ±Êä³ö
+            if (Main.Settings == null || !Main.Settings.VerboseLogging) return; // ï¿½ï¿½ï¿½ï¿½Í³Ò»ï¿½ï¿½Ï¸ï¿½ï¿½Ö¾ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½
             try
             {
                 var prog = ResourcesLibrary.TryGetBlueprint<BlueprintProgression>(DDProgression);

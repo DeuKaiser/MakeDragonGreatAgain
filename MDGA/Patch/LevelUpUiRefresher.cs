@@ -8,9 +8,9 @@ namespace MDGA.Patch
 {
     internal static class LevelUpUiRefresher
     {
-        // ÀäÈ´£¨ÒÔÖ¡¼Æ£©ÒÔ·ÀÈÕÖ¾Ë¢ÆÁ/ÖØ¸´ÖØ½¨Ñ­»·
-        private const int CooldownFrames = 45; // ÔÚ 60fps ÏÂÔ¼ 0.75s
-        private static readonly Dictionary<int, int> LastScheduleFrame = new(); // ¼ü = ¿ØÖÆÆ÷¹şÏ£ ^ ±êÇ©¹şÏ£
+        // èŠ‚æµä¸å»æŠ–ï¼šé¿å…æ—¥å¿—åˆ·å±/é‡å¤é‡ç®—å¾ªç¯
+        private const int CooldownFrames = 45; // åœ¨ 60fps ä¸‹çº¦ 0.75s
+        private static readonly Dictionary<int, int> LastScheduleFrame = new(); // key = æ§åˆ¶å™¨å“ˆå¸Œ ^ æ ‡ç­¾å“ˆå¸Œ
 
         private class DelayedRefresh : MonoBehaviour
         {
@@ -19,7 +19,7 @@ namespace MDGA.Patch
             void Update()
             {
                 if (Controller == null) { Destroy(gameObject); return; }
-                // ÈôÓÃ»§ÔÚ¼Æ»®ºó½ûÓÃ£¬ÔòÖĞÖ¹
+                // è‹¥ç”¨æˆ·å…³é—­äº†è®¾ç½®ä¸­çš„å¼€å…³ï¼Œåˆ™ç›´æ¥åœæ­¢
                 if (!Main.Settings.EnableUIRefresh) { Destroy(gameObject); return; }
                 try
                 {
@@ -34,15 +34,15 @@ namespace MDGA.Patch
         private static void Schedule(LevelUpController c, string tag)
         {
             if (c == null) return;
-            if (!Main.Settings.EnableUIRefresh) return; // master toggle
-            // Ö÷¿ª¹Ø
+            if (!Main.Settings.EnableUIRefresh) return; // æ€»å¼€å…³
+            // å»æŠ–åˆ¤æ–­
             try
             {
                 int key = unchecked(c.GetHashCode() ^ tag.GetHashCode());
                 int now = Time.frameCount;
                 if (LastScheduleFrame.TryGetValue(key, out var last) && now - last < CooldownFrames)
                 {
-                    return; // ÀäÈ´ÖĞ
+                    return; // å†·å´ä¸­
                 }
                 LastScheduleFrame[key] = now;
                 var go = new GameObject("MDGA_UIRefresh_" + tag);
@@ -65,7 +65,7 @@ namespace MDGA.Patch
             }
         }
 
-        // ½ûÓÃ´ËÇ°µÄ ApplyClassMechanics Postfix ²¹¶¡£¨ÏÖÒÑ²»ĞèÒª£©¡£
+        // é¢„ç•™çš„ ApplyClassMechanics Postfixï¼ˆå½“å‰ä¸å¯ç”¨ï¼‰
         [HarmonyPatch(typeof(LevelUpController), nameof(LevelUpController.ApplyClassMechanics))]
         private static class ApplyClassMechanicsPatch
         {

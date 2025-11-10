@@ -4,11 +4,12 @@ using System.Reflection;
 using HarmonyLib;
 using Kingmaker.Blueprints;
 using Kingmaker.Blueprints.Classes;
-using Kingmaker.Blueprints.JsonSystem; // Ϊ BlueprintsCache ����
+using Kingmaker.Blueprints.JsonSystem; // 供 BlueprintsCache 初始化时挂载
 
 namespace MDGA.Patch
 {
-    // ����������ʱ��׮��ͨ����̬������¼Ѫͳѡ��ʱ FeatureSelectionState.CanSelect �Ľ��
+    // 在蓝图缓存初始化后安装“血统选择深度调试”补丁：
+    // 通过前后缀记录 FeatureSelectionState.CanSelect(feature) 的输入与结果，定位为何某些血统被阻止/允许。
     [HarmonyPatch(typeof(BlueprintsCache), nameof(BlueprintsCache.Init))]
     internal static class BloodlineSelectionDeepDebug_Init
     {
@@ -29,19 +30,19 @@ namespace MDGA.Patch
         {
             _harmony = new Harmony("MDGA.BloodlineSelectionDeepDebug");
             var t = AccessTools.TypeByName("Kingmaker.UnitLogic.Class.LevelUp.Selections.FeatureSelectionState");
-            if (t == null) { Main.Log("[BloodlineDeepDebug] FeatureSelectionState type not found �C skipping."); return; }
+            if (t == null) { Main.Log("[BloodlineDeepDebug] FeatureSelectionState type not found - skipping."); return; }
             var mi = AccessTools.Method(t, "CanSelect", new Type[] { typeof(BlueprintFeature) });
-            if (mi == null) { Main.Log("[BloodlineDeepDebug] CanSelect method not found �C skipping."); return; }
+            if (mi == null) { Main.Log("[BloodlineDeepDebug] CanSelect method not found - skipping."); return; }
             var pre = new HarmonyMethod(typeof(BloodlineSelectionDeepDebug).GetMethod(nameof(Prefix), BindingFlags.Static | BindingFlags.NonPublic));
             var post = new HarmonyMethod(typeof(BloodlineSelectionDeepDebug).GetMethod(nameof(Postfix), BindingFlags.Static | BindingFlags.NonPublic));
             _harmony.Patch(mi, pre, post);
             Main.Log("[BloodlineDeepDebug] Patched FeatureSelectionState.CanSelect");
         }
 
-        // ���淴���Ա
-        private static FieldInfo _fiSelection; // m_Selection �� Selection
+        // 反射缓存
+        private static FieldInfo _fiSelection; // m_Selection / Selection
         private static PropertyInfo _piSelection;
-        private static FieldInfo _fiItems; // m_Items���б�������������ѡ����
+        private static FieldInfo _fiItems; // m_Items（已选项集合）
 
         private static object GetSelection(object state)
         {

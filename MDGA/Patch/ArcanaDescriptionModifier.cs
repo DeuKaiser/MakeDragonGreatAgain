@@ -9,21 +9,21 @@ using Kingmaker.UnitLogic.FactLogic; // DescriptionModifier
 namespace MDGA.Patch
 {
     /// <summary>
-    /// Runtime description modifier component for Draconic Arcana features.
-    /// Adds scaling text (+2/+3/+4 per die at 5/10/15) if absent, without touching localization packs or keys.
+    /// 为龙族秘法特性在运行时追加“随等级提升的每骰加值说明”（5/10/15级依次为+2/+3/+4）。
+    /// 不改动原有本地化键，仅在当前文本后拼接说明。
     /// </summary>
-    [TypeId("6b6a2a74-e2a1-407c-9bcf-4f2b1a1d0aca")] // valid GUID (previous invalid string caused PatchAll failure)
+    [TypeId("6b6a2a74-e2a1-407c-9bcf-4f2b1a1d0aca")] // 有效 GUID（此前无效字符串会导致 PatchAll 失败）
     internal sealed class ArcanaScalingDescriptionModifier : DescriptionModifier
     {
-        private const string ZhSuffix = " ��5��ʱ�üӳ�����Ϊÿ��+2��10��Ϊÿ��+3��15��Ϊÿ��+4��";
+        private const string ZhSuffix = " 在5级时该加值变为每骰+2，在10级为每骰+3，在15级为每骰+4。";
         private const string EnSuffix = " At 5th level this bonus increases to +2 per die, at 10th level to +3, and at 15th level to +4.";
         public override string Modify(string originalString)
         {
             try
             {
                 if (string.IsNullOrEmpty(originalString)) return originalString;
-                // If already contains our final tier marker, skip
-                if (originalString.Contains("15��") || originalString.Contains("15th level") || originalString.Contains("15th") || originalString.Contains("15��Ϊÿ��+4"))
+                // 若已包含 15 级终阶提示（中/英），则不再重复追加
+                if (originalString.Contains("15级") || originalString.Contains("15级为每骰+4") || originalString.Contains("15th level") || originalString.Contains("15th"))
                     return originalString;
                 bool hasChinese = originalString.Any(c => c >= '\u4e00' && c <= '\u9fff');
                 return originalString.TrimEnd() + (hasChinese ? ZhSuffix : EnSuffix);
@@ -33,7 +33,7 @@ namespace MDGA.Patch
     }
 
     /// <summary>
-    /// Inject ArcanaScalingDescriptionModifier into the ten draconic arcana features after blueprints load.
+    /// 在蓝图加载后把 ArcanaScalingDescriptionModifier 注入到 10 个龙族秘法特性上。
     /// </summary>
     [HarmonyPatch(typeof(BlueprintsCache), nameof(BlueprintsCache.Init))]
     internal static class ArcanaScalingDescriptionModifierInjector
@@ -67,14 +67,14 @@ namespace MDGA.Patch
                     if (feat == null) { missing++; continue; }
                     try
                     {
-                        // �����������
+                        // 通过反射读取/写回组件数组
                         var bpType = typeof(BlueprintScriptableObject);
                         var compField = bpType.GetField("m_Components", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
                         var comps = compField?.GetValue(feat) as BlueprintComponent[] ?? Array.Empty<BlueprintComponent>();
                         if (comps.OfType<ArcanaScalingDescriptionModifier>().Any()) { already++; continue; }
                         var newComps = comps.Concat(new BlueprintComponent[] { new ArcanaScalingDescriptionModifier() }).ToArray();
                         compField?.SetValue(feat, newComps);
-                        // �������ʹ�ڲ����������������ֶ�ʧЧ
+                        // 清空描述修饰符缓存，确保新组件立即生效
                         var cacheField = feat.GetType().GetField("m_DescriptionModifiersCache", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
                         if (cacheField != null) try { cacheField.SetValue(feat, null); } catch { }
                         added++;

@@ -5,9 +5,9 @@ using HarmonyLib;
 using Kingmaker.Blueprints;
 using Kingmaker.Blueprints.Classes;
 using Kingmaker.Blueprints.JsonSystem;
-using Kingmaker.UnitLogic.Class.LevelUp; // FeatureSelectionState¡¢LevelUpState
+using Kingmaker.UnitLogic.Class.LevelUp; // FeatureSelectionState / LevelUpState
 using Kingmaker.EntitySystem.Entities; // UnitEntityData
-using Kingmaker.Blueprints.Classes.Selection; // IFeatureSelection¡¢IFeatureSelectionItem
+using Kingmaker.Blueprints.Classes.Selection; // IFeatureSelection / IFeatureSelectionItem
 using Kingmaker.UnitLogic; // UnitDescriptor
 using System.Collections.Generic;
 
@@ -28,13 +28,13 @@ namespace MDGA.Patch
     internal static class BloodlineRestrictionBypass
     {
         private static Harmony _harmony;
-        private static BlueprintScriptableObject _crossSecondarySelection; // ½»²æÑªÍ³µÄ´ÎÒªÑªÍ³Ñ¡Ôñ
-        private static BlueprintScriptableObject _secondBloodlineSelection; // Éñ»°¡°µÚ¶şÑªÍ³¡±
+        private static BlueprintScriptableObject _crossSecondarySelection; // äº¤é”™è¡€ç»Ÿçš„â€œæ¬¡çº§è¡€ç»Ÿâ€é€‰æ‹©
+        private static BlueprintScriptableObject _secondBloodlineSelection; // â€œç¬¬äºŒè¡€ç»Ÿâ€é€‰æ‹©
         private static readonly string CrossSecondarySelectionGuid = "60c99d78a70e0b44f87ba01d02d909a6"; // CrossbloodedSecondaryBloodlineSelection
         private static readonly string SecondBloodlineSelectionGuid = "3cf2ab2c320b73347a7c21cf0d0995bd"; // SecondBloodline
         private static bool _itemsPatched;
 
-        // Ô­°æÃüÃûÖĞÊ¹ÓÃµÄÁúÂöÑÕÉ«±ê¼Ç
+        // åŸç”Ÿå¯ç”¨çš„é¾™æ—é¢œè‰²åç¼€
         private static readonly string[] DraconicColors = new[] { "Black","Blue","Brass","Bronze","Copper","Gold","Green","Red","Silver","White" };
 
         internal static void Install()
@@ -42,8 +42,8 @@ namespace MDGA.Patch
             _harmony = new Harmony("MDGA.BloodlineRestrictionBypass");
             TryResolve(CrossSecondarySelectionGuid, out _crossSecondarySelection);
             TryResolve(SecondBloodlineSelectionGuid, out _secondBloodlineSelection);
-            PatchCanSelectAnything();          // ×÷ÓÃÓÚÎÒÃÇµÄÄ¿±êÑ¡Ôñ
-            PatchIFeatureSelectionCanSelect();  // ¾«Ï¸°×Ãûµ¥Âß¼­
+            PatchCanSelectAnything();          // æ”¾å®½â€œæ˜¯å¦å¯é€‰æ‹©ä»»ä½•é¡¹â€çš„åˆ¤å®š
+            PatchIFeatureSelectionCanSelect();  // ç»†åŒ–é€é¡¹ CanSelect é€»è¾‘
             Main.Log("[BloodlineBypass] Installed (targets: CrossSecondary + SecondBloodline; no duplicate draconic colors)");
         }
 
@@ -76,7 +76,7 @@ namespace MDGA.Patch
             return selection == (object)_crossSecondarySelection || selection == (object)_secondBloodlineSelection;
         }
 
-        // ´ÓÈÎÒâÁúÂö½ø½×Ïà¹ØµÄÃû³ÆÖĞÌáÈ¡ÑÕÉ«±ê¼Ç
+        // ä»åç§°ä¸­æå–é¾™æ—é¢œè‰²ï¼ˆåŸºäºç‰¹æ€§å‘½åçº¦å®šï¼‰
         private static string GetDraconicColor(string name)
         {
             if (string.IsNullOrEmpty(name)) return null;
@@ -120,26 +120,28 @@ namespace MDGA.Patch
         private static bool IsSpecialLocked(string name)
         {
             if (string.IsNullOrEmpty(name)) return false;
-            // exclude esoteric / secret / custom locked ones (heuristic keywords)
+            // æ’é™¤â€œç§˜ä¼ /ç¥ç§˜/éšè—â€ç­‰ç‰¹æ®Šæˆ–è‡ªå®šä¹‰é”å®šçš„è¡€ç»Ÿï¼ˆå¯å‘å¼å…³é”®å­—ï¼‰
             return name.IndexOf("Esoteric", StringComparison.OrdinalIgnoreCase) >= 0
                 || name.IndexOf("Secret", StringComparison.OrdinalIgnoreCase) >= 0
                 || name.IndexOf("Mystic", StringComparison.OrdinalIgnoreCase) >= 0
-                || name.IndexOf("ÃØ", StringComparison.Ordinal) >= 0;
+                || name.IndexOf("Hidden", StringComparison.OrdinalIgnoreCase) >= 0
+                || name.IndexOf("Custom", StringComparison.OrdinalIgnoreCase) >= 0
+                || name.IndexOf("ç§˜", StringComparison.Ordinal) >= 0;
         }
 
-        // Ã¶¾Ù LevelUpState ÖĞ´æ·ÅµÄËùÓĞ FeatureSelectionState£¬ÒÔÕÒ³öµ±Ç°»á»°ÖĞÒÑÑ¡ÔñµÄÌõÄ¿
+        // æšä¸¾ LevelUpState ä¸­å­˜æ”¾çš„æ‰€æœ‰ FeatureSelectionStateï¼Œæ‰¾åˆ°æœ¬æ¬¡ä¼šè¯å†…çš„å·²é€‰é¡¹ç›®
         private static IEnumerable<FeatureSelectionState> EnumerateSelectionStates(LevelUpState state)
         {
             if (state == null) yield break;
             var flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-            // É¨Ãè×Ö¶Î
+            // æ‰«æå­—æ®µ
             foreach (var f in state.GetType().GetFields(flags))
             {
                 object val = null;
                 try { val = f.GetValue(state); } catch { }
                 foreach (var s in ExtractStatesFromObject(val)) yield return s;
             }
-            // É¨ÃèÊôĞÔ
+            // æ‰«æå±æ€§
             foreach (var p in state.GetType().GetProperties(flags))
             {
                 if (!p.CanRead) continue;
@@ -182,7 +184,7 @@ namespace MDGA.Patch
             return false;
         }
 
-        // ±éÀúµ±Ç°Éı¼¶Ñ¡ÔñÁ´£¬¼ì²â±¾´Î»á»°ÖĞÒÑÑ¡ÔñµÄÑÕÉ«
+        // æ²¿çˆ¶/å­é“¾æ£€æŸ¥åœ¨åŒä¸€é“¾è·¯ä¸­æ˜¯å¦å·²é€‰æ‹©è¿‡ç›¸åŒé¢œè‰²ï¼ˆé¿å…é‡å¤ï¼‰
         private static bool HasColorInChain(FeatureSelectionState selectionState, string color)
         {
             if (selectionState == null || string.IsNullOrEmpty(color)) return false;
@@ -200,7 +202,7 @@ namespace MDGA.Patch
                     if (!string.IsNullOrEmpty(c) && string.Equals(c, color, StringComparison.OrdinalIgnoreCase)) return true;
                 }
                 catch { }
-                // Ë«Ïò±éÀú
+                // åŒå‘é“¾
                 return Check(s.Parent) || Check(s.Next);
             }
             return Check(selectionState);
@@ -211,7 +213,7 @@ namespace MDGA.Patch
             if (feat == null) return false;
             var name = feat.name ?? string.Empty;
             if (string.IsNullOrEmpty(name)) return false;
-            // Accept both secondary and main/seeker/NT variants
+            // æ”¯æŒæ¬¡çº§ä¸ä¸»ç³»/æ¢ç´¢è€…/ä¹å°¾ç­‰å˜ä½“å‘½å
             if (name.StartsWith("CrossbloodedSecondaryBloodlineDraconic", StringComparison.Ordinal)) return true;
             if (name.StartsWith("BloodlineDraconic", StringComparison.Ordinal)) return true;                 // main + NineTailed (Progression1)
             if (name.StartsWith("SeekerBloodlineDraconic", StringComparison.Ordinal)) return true;           // Seeker variant
@@ -225,13 +227,13 @@ namespace MDGA.Patch
             if (IsSpecialLocked(name)) return false;
             var color = GetDraconicColor(name);
             if (color == null) return false;
-            // ÈôÈÎÒ»ÒÑ´æÔÚµÄÑªÍ³£¨Ö÷/´Î£©ÖĞÒÑ°üº¬¸ÃÑÕÉ«£¬Ôò½ûÖ¹ÖØ¸´ÑÕÉ«
+            // è§’è‰²å·²æ‹¥æœ‰è¯¥é¢œè‰²çš„è¡€ç»Ÿè¿›é˜¶/è¿›åº¦ï¼Œç¦æ­¢é‡å¤é¢œè‰²
             if (UnitAlreadyHasColor(unit, color)) return false;
-            // ÈôÔÚ±¾´ÎÉı¼¶Á´ÖĞ£¨Í¬Ò»´Î»á»°µÄÁíÒ»´¦Ñ¡Ôñ£©ÒÑÑ¡¸ÃÑÕÉ«£¬Ôò½ûÖ¹
+            // åœ¨å½“å‰é€‰æ‹©é“¾ä¸­å·²æœ‰è¯¥é¢œè‰²ï¼Œç¦æ­¢
             if (HasColorInChain(selectionState?.Parent, color) || HasColorInChain(selectionState?.Next, color)) return false;
-            // Èô LevelUpState µÄÈÎÒâÑ¡ÔñÖĞÒÑ´æÔÚ¸ÃÑÕÉ«£¨¶µµ×£©£¬Ôò½ûÖ¹
+            // åœ¨ LevelUpState çš„å…¶å®ƒé€‰æ‹©ä¸­å·²æœ‰è¯¥é¢œè‰²ï¼Œç¦æ­¢
             if (HasColorInState(state, color)) return false;
-            // ÁíÍâ½ûÖ¹ÍêÈ«ÏàÍ¬µÄ½ø½×±»Ñ¡Á½´Î£¨·ÀÓùĞÔ´¦Àí£©
+            // ç¦æ­¢å®Œå…¨ç›¸åŒçš„è¿›é˜¶æ¡ç›®ï¼ˆå·²æœ‰ç›¸åŒè“å›¾ï¼‰
             if (unit?.Progression?.Features.HasFact(feat) == true) return false;
             return true;
         }
@@ -249,7 +251,7 @@ namespace MDGA.Patch
                     {
                         __result = true;
                         if (Main.Settings.VerboseLogging)
-                            Main.Log("[BloodlineBypass] Allow draconic options (CanSelectAnything) ¨C at least one new color");
+                            Main.Log("[BloodlineBypass] Allow draconic options (CanSelectAnything) - at least one new color");
                     }
                 }
             }
@@ -305,7 +307,7 @@ namespace MDGA.Patch
 
                 if (__result)
                 {
-                    // If game allowed it but it's duplicate color (chain/state) or special locked, disallow
+                    // å¦‚æœåŸé€»è¾‘å…è®¸ï¼Œä½†é¢œè‰²é‡å¤ï¼ˆé“¾/ä¼šè¯ï¼‰æˆ–ä¸ºç‰¹æ®Šé”å®šé¡¹ï¼Œåˆ™é˜»æ­¢
                     if (IsSpecialLocked(name) || (color != null && (UnitAlreadyHasColor(unit, color) || HasColorInChain(selectionState?.Parent, color) || HasColorInChain(selectionState?.Next, color) || HasColorInState(state, color))))
                     {
                         __result = false;
@@ -314,7 +316,7 @@ namespace MDGA.Patch
                     }
                     return;
                 }
-                // Original denied: only allow when passes refined checks and is draconic
+                // åŸé€»è¾‘æ‹’ç»ï¼šä»…å½“é€šè¿‡æˆ‘ä»¬ç²¾ç»†æ£€æŸ¥ä¸”ç¡®ä¸ºé¾™æ—è¡€ç»Ÿæ—¶æ”¾è¡Œ
                 if (!IsAllowedDraconicForSelection(feat, unit, selectionState, state)) return;
                 __result = true;
                 if (Main.Settings.VerboseLogging)
