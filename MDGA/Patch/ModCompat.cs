@@ -13,15 +13,19 @@ using Kingmaker.Blueprints.JsonSystem; // 用于 BlueprintsCache
 
 namespace MDGA.Patch
 {
-    // 延迟兼容执行器，确保在其它模组的延迟注入之后执行（例如 Prestige-Plus 的 StartGameLoader 补丁）
+    // 延迟兼容执行器：在其他模组完成蓝图注入后再运行（例如 Prestige-Plus 使用 StartGameLoader 的延迟补丁）
     internal static class ModCompat
     {
         private static bool _scheduled;
         private const int MaxScanAttempts = 5;
         private static int _scanAttempts = 0;
-        // 扩展关键字
-        private static readonly string[] DragonKeywords = new[] {"????","??","Esoteric","Secret","Hidden","??????","??????","EsotericDragon","DragonSecret","??","??"};
-        private static readonly string[] DragonFeatureFragments = new[] {"BreathWeapon","FormOfTheDragon","BloodlineDraconic","DragonDisciple","Dragonkind"};
+        // 关键词（用于启发式识别“龙系血统/进阶”蓝图）
+        private static readonly string[] DragonKeywords = new[]
+        {
+            "龙", "龙族", "龙血", "龙脉", "秘龙", "龙之", // 中文
+            "Esoteric", "Secret", "Hidden", "EsotericDragon", "DragonSecret" // 英文
+        };
+        private static readonly string[] DragonFeatureFragments = new[] { "BreathWeapon", "FormOfTheDragon", "BloodlineDraconic", "DragonDisciple", "Dragonkind", "吐息", "龙形", "龙族之力" };
 
         internal static void Schedule()
         {
@@ -153,7 +157,7 @@ namespace MDGA.Patch
         private static int ApplyPrestigePlusBloodlineRecovery()
         {
             if (!Main.Enabled) return 0;
-            bool prestigeLoaded = AppDomain.CurrentDomain.GetAssemblies().Any(a => { var n = a.GetName().Name ?? string.Empty; return n.IndexOf("Prestige", StringComparison.OrdinalIgnoreCase) >= 0; });
+            bool prestigeLoaded = AppDomain.CurrentDomain.GetAssemblies().Any(a => { var n = a.GetName().Name ?? string.Empty; return n.IndexOf("Prestige", System.StringComparison.OrdinalIgnoreCase) >= 0; });
             if (!prestigeLoaded) { if (Main.Settings.VerboseLogging) Main.Log("[Compat] Prestige-Plus not detected – skip bloodline recovery."); return 0; }
             RemovePrestigePlusFixNoToybox2Prefix();
             EnsureEsotericDragonsSelection();
@@ -180,7 +184,7 @@ namespace MDGA.Patch
                     if (!LikelyDragonBloodline(bp)) continue;
                     // blacklist esoteric-like
                     var nm = bp.name ?? string.Empty;
-                    if (nm.IndexOf("Esoteric", StringComparison.OrdinalIgnoreCase) >= 0 || nm.IndexOf("秘", StringComparison.Ordinal) >= 0)
+                    if (nm.IndexOf("Esoteric", System.StringComparison.OrdinalIgnoreCase) >= 0 || nm.IndexOf("秘", System.StringComparison.Ordinal) >= 0)
                         continue;
                     candidates.Add(bp);
                 }
@@ -249,7 +253,7 @@ namespace MDGA.Patch
                         if (!Main.Settings.AllowEsotericInMainBloodlineSelections)
                         {
                             var nm = prog.name ?? string.Empty;
-                            if (nm.IndexOf("Esoteric", StringComparison.OrdinalIgnoreCase) >= 0 || nm.IndexOf("秘", StringComparison.Ordinal) >= 0)
+                            if (nm.IndexOf("Esoteric", StringComparison.OrdinalIgnoreCase) >= 0 || nm.IndexOf("秘", System.StringComparison.Ordinal) >= 0)
                                 continue;
                         }
                         if (!allArr.Any(r => r?.Guid == prog.AssetGuid)) { allArr = allArr.Append(prog.ToReference<BlueprintFeatureReference>()).ToArray(); changed = true; }
@@ -352,12 +356,10 @@ namespace MDGA.Patch
                 var allArr = (BlueprintFeatureReference[])allField?.GetValue(sel) ?? Array.Empty<BlueprintFeatureReference>();
                 var featsArr = (BlueprintFeatureReference[])featsField?.GetValue(sel) ?? Array.Empty<BlueprintFeatureReference>();
                 bool changed = false;
-                if (!allArr.Any(r => r?.Guid == esotericSel.AssetGuid)) { allArr = allArr.Append(esotericSel.ToReference<BlueprintFeatureReference>()).ToArray(); changed = true; }
-                if (!featsArr.Any(r => r?.Guid == esotericSel.AssetGuid)) { featsArr = featsArr.Append(esotericSel.ToReference<BlueprintFeatureReference>()).ToArray(); changed = true; }
+                if (!allArr.Any(r => r?.Guid == esotericSel.AssetGuid)) { allField?.SetValue(sel, allArr.Append(esotericSel.ToReference<BlueprintFeatureReference>()).ToArray()); changed = true; }
+                if (!featsArr.Any(r => r?.Guid == esotericSel.AssetGuid)) { featsField?.SetValue(sel, featsArr.Append(esotericSel.ToReference<BlueprintFeatureReference>()).ToArray()); changed = true; }
                 if (changed)
                 {
-                    allField?.SetValue(sel, allArr);
-                    featsField?.SetValue(sel, featsArr);
                     if (Main.Settings.VerboseLogging) Main.Log("[Compat] Injected EsotericDragons into selection " + sel.name + ".");
                 }
                 else

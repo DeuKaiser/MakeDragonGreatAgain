@@ -21,7 +21,7 @@ namespace MDGA.Patch
         {
             if (_ran) return; _ran = true;
             if (!Main.Enabled) return;
-            if (Main.Settings == null || !Main.Settings.VerboseLogging) return; // ����ͳһ��ϸ��־����ʱ���
+            if (Main.Settings == null || !Main.Settings.VerboseLogging) return; // 仅在开启详细日志时输出诊断
             try
             {
                 var prog = ResourcesLibrary.TryGetBlueprint<BlueprintProgression>(DDProgression);
