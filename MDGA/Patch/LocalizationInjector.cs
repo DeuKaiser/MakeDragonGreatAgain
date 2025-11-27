@@ -342,10 +342,45 @@ namespace MDGA.Patch
                 var descKey = "MDGA_DD_" + feat.AssetGuid + "_m_Description";
                 RegisterDynamicKey(displayKey, display);
                 RegisterDynamicKey(descKey, description);
+
+                // 直接将 blueprint 上的 m_DisplayName / m_Description 的 m_Key 指向我们动态 key；
+                // 并在本地对象里写入 m_Text 作为兜底，防止 UI 读取时出现 null。
+                BindKeyAndText(feat, "m_DisplayName", displayKey, display);
+                BindKeyAndText(feat, "m_Description", descKey, description);
             }
             catch (Exception ex)
             {
                 if (Main.Settings.VerboseLogging) Main.Log("[DD ProgFix][Loc] RegisterFeatureLocalization error: " + ex.Message);
+            }
+        }
+
+        private static void BindKeyAndText(object blueprint, string fieldName, string key, string text)
+        {
+            try
+            {
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+                FieldInfo fi = null; Type t = blueprint.GetType();
+                while (t != null && fi == null) { fi = t.GetField(fieldName, flags); t = t.BaseType; }
+                if (fi == null) return;
+                var locObj = fi.GetValue(blueprint);
+                if (locObj == null)
+                {
+                    // 尝试创建新的 LocalizedString 实例
+                    var locType = fi.FieldType;
+                    try { locObj = Activator.CreateInstance(locType); fi.SetValue(blueprint, locObj); } catch { return; }
+                }
+                var keyField = locObj.GetType().GetField("m_Key", flags);
+                var textField = locObj.GetType().GetField("m_Text", flags);
+                if (keyField != null) keyField.SetValue(locObj, key);
+                if (textField != null && (textField.GetValue(locObj) as string) == null)
+                {
+                    // 仅在原文本为空时写入兜底文本，避免覆盖其他 mod 已经写入的内容
+                    textField.SetValue(locObj, text);
+                }
+            }
+            catch (Exception ex)
+            {
+                if (Main.Settings.VerboseLogging) Main.Log("[DD ProgFix][Loc] BindKeyAndText error: " + ex.Message);
             }
         }
 

@@ -1,0 +1,13 @@
+# Ignore specific files
+copy.txt
+Player.log
+SpellListSummary.txt
+��copilot�ĶԻ��ܽ�.txt
+# Ignore full reference workspace (large, not part of distributable mod)
+MDGA�����ο�/
+/MDGA制作参�?MDGA制作参�?csproj
+/MDGA制作参�?Class1.cs
+/MDGA制作参�?
+/MDGA/VSC CopilotSummary.txt
+/MDGA/与copilot的对话总结.txt
+/Assembly-CSharp
