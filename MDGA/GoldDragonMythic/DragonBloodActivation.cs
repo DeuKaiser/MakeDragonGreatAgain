@@ -12,7 +12,7 @@ using Kingmaker.Localization;
 using MDGA.Loc;
 using UnityEngine;
 
-namespace MDGA.GoldDragon
+namespace MDGA.GoldDragonMythic
 {
     [HarmonyPatch(typeof(BlueprintsCache), nameof(BlueprintsCache.Init))]
     internal static class DragonBloodActivation

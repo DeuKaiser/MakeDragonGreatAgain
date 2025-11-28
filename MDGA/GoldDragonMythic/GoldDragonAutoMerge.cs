@@ -19,7 +19,7 @@ using Kingmaker.UnitLogic.Abilities.Blueprints; // 为 BlueprintAbilityReference
 using Kingmaker.Blueprints.Classes.Prerequisites;
 using MDGA.Loc; // PrerequisiteFeaturesFromList
 
-namespace MDGA.AutoMerge
+namespace MDGA.GoldDragonMythic
 {
     internal static class GoldDragonAutoMerge
     {

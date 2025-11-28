@@ -1,7 +1,7 @@
 ﻿using HarmonyLib;
 using System.Reflection;
 using UnityModManagerNet;
-using MDGA.AutoMerge; // 引入以调用延迟执行
+using MDGA.GoldDragonMythic; // 引入以调用延迟执行 (修复命名空间)
 using System.IO;
 using UnityEngine;
 using MDGA.Loc; // localization injector

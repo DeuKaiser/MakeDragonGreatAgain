@@ -15,7 +15,7 @@ using Kingmaker.UnitLogic.Class.LevelUp;
 using Kingmaker.UnitLogic.Class;
 using MDGA.Loc;
 
-namespace MDGA.GoldDragon
+namespace MDGA.GoldDragonMythic
 {
     /// <summary>
     /// “龙血沸腾”实现（方案A）：

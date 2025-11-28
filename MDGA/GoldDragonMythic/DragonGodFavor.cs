@@ -12,7 +12,7 @@ using Kingmaker.Blueprints.Facts;
 using Kingmaker.Localization;
 using MDGA.Loc;
 
-namespace MDGA.GoldDragon
+namespace MDGA.GoldDragonMythic
 {
     // 金龙道途额外恩赐：在金龙 1/2/3 级各额外给予一次“神话能力”选择
     [HarmonyPatch(typeof(BlueprintsCache), nameof(BlueprintsCache.Init))]
