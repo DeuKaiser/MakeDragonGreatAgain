@@ -19,7 +19,9 @@ namespace MDGA.Components
         [HarmonyPostfix]
         public static void Postfix()
         {
+            // 仅在 Mod 开启且启用详细日志时运行深度诊断，避免刷屏与性能问题
             if (s_Initialized) return;
+            if (!MDGA.Main.Enabled || MDGA.Main.Settings == null || !MDGA.Main.Settings.VerboseLogging) return;
             s_Initialized = true;
             try
             {

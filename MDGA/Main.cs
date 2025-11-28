@@ -51,30 +51,34 @@ namespace MDGA
                 // 自检：看看 BlueprintsCache.Init 上有哪些 Postfix（用于确认 DragonheirLegacy 是否成功挂上去）
                 try
                 {
-                    var target = AccessTools.Method(typeof(Kingmaker.Blueprints.JsonSystem.BlueprintsCache), "Init");
-                    if (target == null)
+                    if (Settings != null && Settings.VerboseLogging)
                     {
-                        Log("[DragonheirLegacy][Diag] BlueprintsCache.Init method not found by AccessTools.");
-                    }
-                    else
-                    {
-                        var info = Harmony.GetPatchInfo(target);
-                        if (info == null)
+                        var target = AccessTools.Method(typeof(Kingmaker.Blueprints.JsonSystem.BlueprintsCache), "Init");
+                        if (target == null)
                         {
-                            Log("[DragonheirLegacy][Diag] Harmony.GetPatchInfo returned null for BlueprintsCache.Init.");
+                            Log("[DragonheirLegacy][Diag] BlueprintsCache.Init method not found by AccessTools.");
                         }
                         else
                         {
-                            var postfixes = info.Postfixes
-                                .Select(p => p.PatchMethod.DeclaringType != null ? p.PatchMethod.DeclaringType.FullName : p.PatchMethod.Name)
-                                .ToArray();
-                            Log("[DragonheirLegacy][Diag] Postfixes on BlueprintsCache.Init: " + string.Join(", ", postfixes));
+                            var info = Harmony.GetPatchInfo(target);
+                            if (info == null)
+                            {
+                                Log("[DragonheirLegacy][Diag] Harmony.GetPatchInfo returned null for BlueprintsCache.Init.");
+                            }
+                            else
+                            {
+                                var postfixes = info.Postfixes
+                                    .Select(p => p.PatchMethod.DeclaringType != null ? p.PatchMethod.DeclaringType.FullName : p.PatchMethod.Name)
+                                    .ToArray();
+                                Log("[DragonheirLegacy][Diag] Postfixes on BlueprintsCache.Init: " + string.Join(", ", postfixes));
+                            }
                         }
                     }
                 }
                 catch (System.Exception exDiag)
                 {
-                    Log("[DragonheirLegacy][Diag] Error while checking patches: " + exDiag.Message);
+                    if (Settings != null && Settings.VerboseLogging)
+                        Log("[DragonheirLegacy][Diag] Error while checking patches: " + exDiag.Message);
                 }
             }
             catch (System.Exception ex)
@@ -93,14 +97,16 @@ namespace MDGA
         {
             try
             {
-                Log("[LocInit] Early EnsureInjected start");
+                if (Settings != null && Settings.VerboseLogging)
+                    Log("[LocInit] Early EnsureInjected start");
                 LocalizationInjector.EnsureInjected();
                 LocalizationInjector.InstallWatcher();
                 LocalizationInjector.StartDelayed();
             }
             catch (System.Exception ex)
             {
-                Log("[LocInit] Early localization injection error: " + ex.Message);
+                if (Settings != null && Settings.VerboseLogging)
+                    Log("[LocInit] Early localization injection error: " + ex.Message);
             }
         }
 
