@@ -5,7 +5,7 @@
 	  <!-- Set to net46 for Kingmaker -->
 	  <LangVersion>latest</LangVersion>
 <!-- Set to net46 for Kingmaker -->
-<TargetFramework>net48</TargetFramework>
+<TargetFramework>net481</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <BaseOutputPath>E:\我的开拓者mod\MDGA</BaseOutputPath>
@@ -36,10 +36,6 @@
     </Reference>
     <Reference Include="DarkCodex">
       <HintPath>E:\SteamLibrary\steamapps\common\Pathfinder Second Adventure\Mods\DarkCodex\DarkCodex.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="TabletopTweaks-Core">
-      <HintPath>E:\SteamLibrary\steamapps\common\Pathfinder Second Adventure\Mods\TabletopTweaks-Core\TabletopTweaks-Core.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="UnityEngine.CoreModule">
