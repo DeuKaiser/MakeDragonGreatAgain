@@ -4,7 +4,7 @@ using UnityModManagerNet;
 using MDGA.AutoMerge; // 引入以调用延迟执行
 using System.IO;
 using UnityEngine;
-using MDGA.Patch; // localization injector
+using MDGA.Loc; // localization injector
 
 namespace MDGA
 {
