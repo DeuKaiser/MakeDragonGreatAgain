@@ -19,9 +19,9 @@ namespace MDGA.GoldDragonMythic
 {
     /// <summary>
     /// “龙血沸腾”实现（方案A）：
-    /// - 在金龙神话2级发放一个隐藏被动特性，用于识别并放宽等级上限到25级（需拥有龙脉血承）。
-    /// - Patch LevelUpController.GetEffectiveLevel：拥有该特性时，使用扩展经验阈值并允许逐级提升至25级。
-    /// - Patch LevelUpController.CanLevelUp：拥有该特性时，依据单位ExperienceTable判断下一阈值，严格控制单级升级（<=25）。
+    /// - 在金龙神话2级发放一个隐藏被动特性，用于识别并放宽等级上限到30级（需拥有龙脉血承）。
+    /// - Patch LevelUpController.GetEffectiveLevel：拥有该特性时，使用扩展经验阈值并允许逐级提升至30级。
+    /// - Patch LevelUpController.CanLevelUp：拥有该特性时，依据单位ExperienceTable判断下一阈值，严格控制单级升级（<=30）。
     /// </summary>
     [HarmonyPatch]
     internal static class DragonBloodBoiling
@@ -30,21 +30,22 @@ namespace MDGA.GoldDragonMythic
         private const string GoldenDragonProgressionGuid = "a6fbca43902c6194c947546e89af64bd"; // 金龙进阶（仅3级，对应全局8/9/10）
 
         private static bool _installed;
-    private static BlueprintStatProgression _xpDragon25; // 缓存的25级经验表
-    // 仅在拥有“龙脉血承”时生效：与 DragonBloodActivation 中使用的判定保持一致
-    private static readonly BlueprintGuid[] DraconicRequisiteGuids = new[]
-    {
-        BlueprintGuid.Parse("d89fb8ce9152ffa4dacd69390f3d7721"),
-        BlueprintGuid.Parse("64e1f27147b642448842ab8dcbaca03f"),
-        BlueprintGuid.Parse("12bb1056a5f3f9f4b9facdb78b8d8914"),
-        BlueprintGuid.Parse("1d34d95ad4961e343b02db14690eb6d8"),
-        BlueprintGuid.Parse("eef664d1e4318f64cb2304d1628d29ae"),
-        BlueprintGuid.Parse("bef8d08ee3c20b246b404ce3ef948291"),
-        BlueprintGuid.Parse("49115e2147cd32841baa34c305171daa"),
-        BlueprintGuid.Parse("9c5ed34089fedf54ba8d0f43565bcc91"),
-        BlueprintGuid.Parse("01e7aab638d6a0b43bc4e9d5b49e68d9"),
-        BlueprintGuid.Parse("3867419bf47841b428333808dfdf4ae0"),
-    };
+        private const int DragonCap = 30; // 目标突破等级上限
+        private static BlueprintStatProgression _xpDragonCap; // 缓存的扩展经验表（至30级）
+        // 仅在拥有“龙脉血承”时生效：与 DragonBloodActivation 中使用的判定保持一致
+        private static readonly BlueprintGuid[] DraconicRequisiteGuids = new[]
+        {
+            BlueprintGuid.Parse("d89fb8ce9152ffa4dacd69390f3d7721"),
+            BlueprintGuid.Parse("64e1f27147b642448842ab8dcbaca03f"),
+            BlueprintGuid.Parse("12bb1056a5f3f9f4b9facdb78b8d8914"),
+            BlueprintGuid.Parse("1d34d95ad4961e343b02db14690eb6d8"),
+            BlueprintGuid.Parse("eef664d1e4318f64cb2304d1628d29ae"),
+            BlueprintGuid.Parse("bef8d08ee3c20b246b404ce3ef948291"),
+            BlueprintGuid.Parse("49115e2147cd32841baa34c305171daa"),
+            BlueprintGuid.Parse("9c5ed34089fedf54ba8d0f43565bcc91"),
+            BlueprintGuid.Parse("01e7aab638d6a0b43bc4e9d5b49e68d9"),
+            BlueprintGuid.Parse("3867419bf47841b428333808dfdf4ae0"),
+        };
 
         [HarmonyPatch(typeof(BlueprintsCache), nameof(BlueprintsCache.Init))]
         private static class CacheInit
@@ -86,9 +87,9 @@ namespace MDGA.GoldDragonMythic
             try
             {
                 const string nameZh = "龙血沸腾";
-                const string descZh = "进入金龙神话道途2以后，在龙神的注视下，凡躯中的稀薄龙血被点燃，将躯体改造为能够承受高贵龙族精神的神性躯体，将突破职业等级的极限到25级，仅在拥有龙脉血承时生效。";
+                const string descZh = "进入金龙神话道途2以后，在龙神的注视下，凡躯中的稀薄龙血被点燃，将躯体改造为能够承受高贵龙族精神的神性躯体，将突破职业等级的极限到30级，仅在拥有龙脉血承时生效。";
                 const string nameEn = "Dragon Blood Boiling";
-                const string descEn = "Upon reaching Golden Dragon mythic rank 2, the faint draconic blood within your mortal body ignites under the Dragon God's gaze, reshaping you into a vessel worthy of noble draconic spirit. Your character level cap increases to 25. This effect only applies if you possess a draconic bloodline inheritance.";
+                const string descEn = "Upon reaching Golden Dragon mythic rank 2, the faint draconic blood within your mortal body ignites under the Dragon God's gaze, reshaping you into a vessel worthy of noble draconic spirit. Your character level cap increases to 30. This effect only applies if you possess a draconic bloodline inheritance.";
 
                 LocalizationInjector.RegisterDynamicKey("MDGA_DragonBloodBoiling_Name_zh", nameZh);
                 LocalizationInjector.RegisterDynamicKey("MDGA_DragonBloodBoiling_Desc_zh", descZh);
@@ -145,7 +146,7 @@ namespace MDGA.GoldDragonMythic
             }
         }
 
-    // 扩展经验表：保证21~25级阈值严格递增，防止一次性连跳
+        // 扩展经验表：保证21~30级阈值严格递增，防止一次性连跳
         private static void EnsureExtendedXPTable()
         {
             try
@@ -169,9 +170,9 @@ namespace MDGA.GoldDragonMythic
 
                 int beforeMax = values.Count - 1;
                 // 需要至少到20级，且在21级处存在缺口或不递增，才进行扩展
-                if (beforeMax >= 25 && values[25] > values[24])
+                if (beforeMax >= DragonCap && values[Math.Min(DragonCap, values.Count - 1)] > values[Math.Min(DragonCap - 1, values.Count - 2)])
                 {
-                    Main.Log("[DragonBloodBoiling][XP] Table already >= L25. No extend.");
+                    Main.Log("[DragonBloodBoiling][XP] Table already >= L" + DragonCap + ". No extend.");
                     return;
                 }
 
@@ -181,7 +182,7 @@ namespace MDGA.GoldDragonMythic
                     Main.Log($"[DragonBloodBoiling][XP] Table too short (max={beforeMax}). Will extend from last available.");
                 }
 
-                int startIdx = System.Math.Min( System.Math.Max(1, values.Count - 1), 20); // 从已知最后一个或20开始
+                int startIdx = System.Math.Min(System.Math.Max(1, values.Count - 1), 20); // 从已知最后一个或20开始
                 int basePrev = values[startIdx - 1];
                 int baseCurr = values[startIdx];
                 int delta = System.Math.Max(100000, baseCurr - basePrev); // 合理下限，避免0或负增量
@@ -189,7 +190,7 @@ namespace MDGA.GoldDragonMythic
                 // 增长倍率，随级数轻微增加
                 double growth = 1.25; // 可调：1.20~1.35
                 int cur = values[startIdx];
-                for (int lvl = startIdx + 1; lvl <= 25; lvl++)
+                for (int lvl = startIdx + 1; lvl <= DragonCap; lvl++)
                 {
                     // 逐级放大增量
                     delta = (int)System.Math.Ceiling(delta * growth);
@@ -201,7 +202,7 @@ namespace MDGA.GoldDragonMythic
                 // 写回底层数组/列表字段
                 if (TryApplyXpArray(xpTable, values.ToArray()))
                 {
-                    Main.Log($"[DragonBloodBoiling][XP] Extended XP table to L25. L20={values[20]}, L21={values[21]}, L25={values[25]}");
+                    Main.Log($"[DragonBloodBoiling][XP] Extended XP table to L{DragonCap}. L20={values[20]}, L21={values[21]}, L{DragonCap}={values[DragonCap]}");
                 }
                 else
                 {
@@ -296,8 +297,8 @@ namespace MDGA.GoldDragonMythic
                     var owner = __instance?.Owner; if (owner == null) return true;
                     // Owner 已经是 UnitDescriptor，不存在 Descriptor 属性，直接传入
                     if (!HasBoiling(owner)) return true; // 非本特性：走原逻辑
-                    if (_xpDragon25 == null) _xpDragon25 = BuildDragonXp25();
-                    __result = _xpDragon25;
+                    if (_xpDragonCap == null) _xpDragonCap = BuildDragonXpCap();
+                    __result = _xpDragonCap;
                     return false; // 拦截原实现
                 }
                 catch { return true; }
@@ -313,23 +314,23 @@ namespace MDGA.GoldDragonMythic
                 {
                     var owner = __instance?.Owner; if (owner == null) return true;
                     if (!HasBoiling(owner)) return true;
-                    __result = 25;
+                    __result = DragonCap;
                     return false;
                 }
                 catch { return true; }
             }
         }
 
-        private static BlueprintStatProgression BuildDragonXp25()
+        private static BlueprintStatProgression BuildDragonXpCap()
         {
             try
             {
-                // 连续增长：沿用 ToyBox 模式，截断到25级（索引0..25）。
+                // 连续增长：沿用 ToyBox 模式，截断到30级（索引0..30）。
                 int[] full = new int[] {
                     0,0,2000,5000,9000,15000,23000,35000,51000,75000,105000,155000,220000,315000,445000,635000,890000,1300000,1800000,2550000,
                     3600000,4650000,5700000,6750000,7800000,8850000,9900000,10950000,12000000,13050000,14100000
                 };
-                int[] bonuses = full.Take(26).ToArray(); // 0..25 共26项
+                int[] bonuses = full.Take(DragonCap + 1).ToArray(); // 0..30 共31项
                 var xp = new BlueprintStatProgression();
                 // 直接设置 Bonuses 属性（该类型在游戏中只用 Bonuses 读取）
                 var prop = typeof(BlueprintStatProgression).GetProperty("Bonuses", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
@@ -368,7 +369,7 @@ namespace MDGA.GoldDragonMythic
                     }
                     if (unit == null) return;
                     if (!HasBoiling(unit.Descriptor)) return;
-                    if (__result > 25) __result = 25; // feature 生效时把有效等级上限钳到25
+                    if (__result > DragonCap) __result = DragonCap; // feature 生效时把有效等级上限钳到30
                     // 不再根据 XP 回推并连跳多级；让 CanLevelUp 控制“是否还能升一级”。
                 }
                 catch { }
@@ -387,7 +388,7 @@ namespace MDGA.GoldDragonMythic
                 {
                     if (unit == null) return;
                     if (!HasBoiling(unit)) return;          // 没有特性：不干预原结果
-                    if (unit.Progression.CharacterLevel >= 25) { __result = false; return; }
+                    if (unit.Progression.CharacterLevel >= DragonCap) { __result = false; return; }
                     if (Game.Instance?.Player?.IsInCombat == true) return;
                     if (unit.State?.IsDead == true) return;
 

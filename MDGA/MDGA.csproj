@@ -18,6 +18,12 @@
     </PackageReference>
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net472" Version="1.0.3" />
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net481" Version="1.0.3">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="WW-Blueprint-Core" Version="2.8.6" />
+	  <PackageReference Include="ILRepack.MSBuild.Task" Version="2.0.13" />
   </ItemGroup>
 
   <ItemGroup>
@@ -26,16 +32,35 @@
       <Private>False</Private>
     </Reference>
     <Reference Include="Assembly-CSharp">
-      <HintPath Condition="Exists('$(MSBuildProjectDirectory)\lib\Assembly-CSharp_publicized.dll')">$(MSBuildProjectDirectory)\lib\Assembly-CSharp_publicized.dll</HintPath>
-      <HintPath Condition="!Exists('$(MSBuildProjectDirectory)\lib\Assembly-CSharp_publicized.dll')">E:\SteamLibrary\steamapps\common\Pathfinder Second Adventure\Wrath_Data\Managed\Assembly-CSharp.dll</HintPath>
+      <HintPath>$(SolutionDir)lib\Assembly-CSharp.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Assembly-CSharp-firstpass">
       <HintPath>E:\SteamLibrary\steamapps\common\Pathfinder Second Adventure\Wrath_Data\Managed\Assembly-CSharp-firstpass.dll</HintPath>
       <Private>False</Private>
     </Reference>
-    <Reference Include="DarkCodex">
-      <HintPath>E:\SteamLibrary\steamapps\common\Pathfinder Second Adventure\Mods\DarkCodex\DarkCodex.dll</HintPath>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>E:\SteamLibrary\steamapps\common\Pathfinder Second Adventure\Wrath_Data\Managed\Newtonsoft.Json.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Owlcat.Runtime.Core">
+      <HintPath>E:\SteamLibrary\steamapps\common\Pathfinder Second Adventure\Wrath_Data\Managed\Owlcat.Runtime.Core.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Owlcat.Runtime.UI">
+      <HintPath>E:\SteamLibrary\steamapps\common\Pathfinder Second Adventure\Wrath_Data\Managed\Owlcat.Runtime.UI.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Owlcat.Runtime.Validation">
+      <HintPath>E:\SteamLibrary\steamapps\common\Pathfinder Second Adventure\Wrath_Data\Managed\Owlcat.Runtime.Validation.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Owlcat.Runtime.Visual">
+      <HintPath>E:\SteamLibrary\steamapps\common\Pathfinder Second Adventure\Wrath_Data\Managed\Owlcat.Runtime.Visual.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>E:\SteamLibrary\steamapps\common\Pathfinder Second Adventure\Wrath_Data\Managed\UnityEngine.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="UnityEngine.CoreModule">
@@ -50,7 +75,9 @@
       <HintPath>E:\SteamLibrary\steamapps\common\Pathfinder Second Adventure\Wrath_Data\Managed\UnityModManager\UnityModManager.dll</HintPath>
       <Private>False</Private>
     </Reference>
-    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="Microsoft.CSharp">
+      <Private>False</Private>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup>
@@ -91,12 +118,130 @@
     <PublicizeOutputDir>$(MSBuildProjectDirectory)\lib\</PublicizeOutputDir>
   </PropertyGroup>
 
+  <!-- Publicize Target -->
   <Target Name="Publicize" AfterTargets="Clean">
     <ItemGroup>
       <!-- Use $(KingmakerPath) for Kingmaker, 这里是 Wrath -->
       <Assemblies Include="$(WrathPath)\Wrath_Data\Managed\Assembly-CSharp.dll" />
+      <PublicAssembly Include="$(SolutionDir)lib\Assembly-CSharp_public.dll" />
+      <RenamedAssembly Include="$(SolutionDir)lib\Assembly-CSharp.dll" />
     </ItemGroup>
 
-    <PublicizeTask InputAssemblies="@(Assemblies)" OutputDir="$(PublicizeOutputDir)" />
+    <RemoveDir Directories="$(SolutionDir)lib/" />
+    <PublicizeTask InputAssemblies="@(Assemblies)" OutputDir="$(SolutionDir)lib/" />
+    <Move SourceFiles="@(PublicAssembly)" DestinationFiles="@(RenamedAssembly)" />
+  </Target>
+
+  <!-- DLL Merging -->
+  <Target Name="ILRepack" AfterTargets="Build">
+    <PropertyGroup>
+      <ILRepackTempDir>$(OutputPath)_ilrepack</ILRepackTempDir>
+    </PropertyGroup>
+
+    <!-- Prepare temp folder -->
+    <MakeDir Directories="$(ILRepackTempDir)" />
+
+    <!-- Copy ALL game Managed DLLs to temp so ILRepack can resolve references without locking output files -->
+    <ItemGroup>
+      <RepackLibs Include="$(WrathPath)\Wrath_Data\Managed\*.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(RepackLibs)" DestinationFolder="$(ILRepackTempDir)" SkipUnchangedFiles="true" />
+
+    <!-- Copy our build outputs needed for merge into temp -->
+    <ItemGroup>
+      <MergeInputs Include="$(OutputPath)MDGA.dll" />
+      <MergeInputs Include="$(OutputPath)BlueprintCore.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(MergeInputs)" DestinationFolder="$(ILRepackTempDir)" SkipUnchangedFiles="true" />
+
+    <ItemGroup>
+      <InputAssemblies Include="MDGA.dll" />
+      <InputAssemblies Include="BlueprintCore.dll" />
+    </ItemGroup>
+
+    <Message Text="Merging: @(InputAssemblies) into MDGA.dll" Importance="High" />
+
+    <!-- Run ILRepack in temp directory, write output to real OutputPath -->
+    <ILRepack OutputType="Dll" MainAssembly="MDGA.dll" OutputAssembly="$(OutputPath)MDGA.dll" InputAssemblies="@(InputAssemblies)" WorkingDirectory="$(ILRepackTempDir)" />
+
+    <!-- Clean up temp folder -->
+    <RemoveDir Directories="$(ILRepackTempDir)" />
+  </Target>
+
+  <ItemGroup>
+    <Reference Update="mscorlib">
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Update="System">
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Update="System.Core">
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Update="System.Data">
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Update="System.Drawing">
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Update="System.IO.Compression.FileSystem">
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Update="System.Numerics">
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Update="System.Runtime.Serialization">
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Update="System.Xml">
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Update="System.Xml.Linq">
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Deploy target: copy merged MDGA.dll/pdb and Info.json to game Mods folder, remove other output files -->
+  <Target Name="Deploy" AfterTargets="ILRepack">
+    <PropertyGroup>
+      <!-- Use WrathPath property defined earlier as game root; change if needed -->
+      <DeployDir>$(WrathPath)\Mods\MDGA\</DeployDir>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <Files Include="$(OutputPath)**\*.*" />
+      <!-- remove extra dlls/pdbs so only the merged MDGA.dll stays -->
+      <Files Remove="$(OutputPath)**\*.dll" />
+      <Files Remove="$(OutputPath)**\*.pdb" />
+      <!-- explicitly include the merged assembly and pdb and Info.json -->
+      <Files Include="$(OutputPath)MDGA.dll" />
+      <Files Include="$(OutputPath)MDGA.pdb" />
+      <Files Include="$(MSBuildProjectDirectory)\Info.json" />
+
+      <ToDelete Include="$(OutputPath)**\*.*" />
+      <ToDelete Remove="@(Files)" />
+    </ItemGroup>
+
+    <MakeDir Directories="$(DeployDir)" />
+    <Copy SourceFiles="@(Files)" DestinationFiles="@(Files->'$(DeployDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Delete Files="@(ToDelete)" />
   </Target>
 </Project>

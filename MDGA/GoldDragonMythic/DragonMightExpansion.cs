@@ -303,7 +303,7 @@ namespace MDGA.GoldDragonMythic
                 if (loc != null)
                 {
                     var tf = loc.GetType().GetField("m_Text", flags);
-                    string zh = "你可以花费{g|Encyclopedia:Swift_Action}迅捷动作{/g}，令自己和周围30英尺内的盟友每施法者2{g|Encyclopedia:Combat_Round}轮{/g}内造成的{g|Encyclopedia:Damage}伤害{/g}提高50%。";
+                    string zh = "你可以花费{g|Encyclopedia:Swift_Action}迅捷动作{/g}，令自己和周围30英尺内的盟友每{g|Encyclopedia:Caster_Level}施法者等级{/g}2{g|Encyclopedia:Combat_Round}轮{/g}内造成的{g|Encyclopedia:Damage}伤害{/g}提高50%。";
                     string en = "As a {g|Encyclopedia:Swift_Action}swift action{/g}, you and allies within 30 feet deal 50% more {g|Encyclopedia:Damage}damage{/g} for 2 {g|Encyclopedia:Combat_Round}rounds{/g} per {g|Encyclopedia:Caster_Level}caster level{/g}.";
 
                     // 使用我们已有的 LocalizationInjector 向当前语言包注册两个动态 key（更新后的 2 轮/CL 文案）
