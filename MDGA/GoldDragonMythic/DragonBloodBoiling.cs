@@ -20,6 +20,7 @@ namespace MDGA.GoldDragonMythic
     /// <summary>
     /// “龙血沸腾”实现（方案A）：
     /// - 在金龙神话2级发放一个隐藏被动特性，用于识别并放宽等级上限到30级（需拥有龙脉血承）。
+    /// - 当主角满足条件时，整个队伍（玩家阵营单位）共享突破（仿 ToyBox 队伍级处理）。
     /// - Patch LevelUpController.GetEffectiveLevel：拥有该特性时，使用扩展经验阈值并允许逐级提升至30级。
     /// - Patch LevelUpController.CanLevelUp：拥有该特性时，依据单位ExperienceTable判断下一阈值，严格控制单级升级（<=30）。
     /// </summary>
@@ -87,9 +88,9 @@ namespace MDGA.GoldDragonMythic
             try
             {
                 const string nameZh = "龙血沸腾";
-                const string descZh = "进入金龙神话道途2以后，在龙神的注视下，凡躯中的稀薄龙血被点燃，将躯体改造为能够承受高贵龙族精神的神性躯体，将突破职业等级的极限到30级，仅在拥有龙脉血承时生效。";
+                const string descZh = "进入金龙神话道途2以后，在龙神的注视下，凡躯中的稀薄龙血被点燃，将躯体改造为能够承受高贵龙族精神的神性躯体，将突破职业等级的极限到30级（队伍共享），仅在拥有龙脉血承时生效。";
                 const string nameEn = "Dragon Blood Boiling";
-                const string descEn = "Upon reaching Golden Dragon mythic rank 2, the faint draconic blood within your mortal body ignites under the Dragon God's gaze, reshaping you into a vessel worthy of noble draconic spirit. Your character level cap increases to 30. This effect only applies if you possess a draconic bloodline inheritance.";
+                const string descEn = "Upon reaching Golden Dragon mythic rank 2, the faint draconic blood within your mortal body ignites under the Dragon God's gaze, reshaping you into a vessel worthy of noble draconic spirit. Your party's character level cap increases to 30. This effect only applies if you possess a draconic bloodline inheritance.";
 
                 LocalizationInjector.RegisterDynamicKey("MDGA_DragonBloodBoiling_Name_zh", nameZh);
                 LocalizationInjector.RegisterDynamicKey("MDGA_DragonBloodBoiling_Desc_zh", descZh);
@@ -266,16 +267,15 @@ namespace MDGA.GoldDragonMythic
             return false;
         }
 
-        private static bool HasBoiling(UnitDescriptor unit)
+        // 原始自身判定（只检测自身是否具备特性+任意龙脉血承）
+        private static bool HasBoilingSelf(UnitDescriptor unit)
         {
             try
             {
                 if (unit == null) return false;
                 var feats = unit.Progression?.Features; if (feats == null) return false;
-                var factBp = ResourcesLibrary.TryGetBlueprint<BlueprintUnitFact>(FeatureGuid);
-                if (factBp == null) return false;
-                if (!feats.HasFact(factBp)) return false; // 先要求拥有龙血沸腾特性
-                // 再检查是否拥有任意龙脉血承（Draconic血承 GUID 列表）
+                var factBp = ResourcesLibrary.TryGetBlueprint<BlueprintUnitFact>(FeatureGuid); if (factBp == null) return false;
+                if (!feats.HasFact(factBp)) return false;
                 foreach (var g in DraconicRequisiteGuids)
                 {
                     var bp = ResourcesLibrary.TryGetBlueprint<BlueprintFeature>(g);
@@ -286,7 +286,24 @@ namespace MDGA.GoldDragonMythic
             catch { return false; }
         }
 
-        // 为拥有“龙血沸腾”的单位，直接覆盖其 ExperienceTable 与 MaxCharacterLevel（仿 ToyBox 思路）
+        // 队伍共享判定：若自身满足则直接通过；否则检查主角是否满足且当前单位属于玩家阵营
+        private static bool HasBoiling(UnitDescriptor unit)
+        {
+            if (HasBoilingSelf(unit)) return true;
+            try
+            {
+                // 修正：UnitReference 为值类型，不能使用 ?. 访问；按顺序取得主角实体再取 Descriptor
+                var mainUnit = Game.Instance?.Player?.MainCharacter.Value; // MainCharacter 为 UnitReference
+                var main = mainUnit?.Descriptor;
+                if (main == null) return false;
+                if (!HasBoilingSelf(main)) return false; // 主角未满足，不共享
+                var ed = unit?.Unit; if (ed == null) return false;
+                if (!ed.IsPlayerFaction) return false;
+                return true;
+            }
+            catch { return false; }
+        }
+
         [HarmonyPatch(typeof(UnitProgressionData), nameof(UnitProgressionData.ExperienceTable), MethodType.Getter)]
         private static class UnitProgressionData_ExperienceTable_Patch
         {
@@ -295,11 +312,10 @@ namespace MDGA.GoldDragonMythic
                 try
                 {
                     var owner = __instance?.Owner; if (owner == null) return true;
-                    // Owner 已经是 UnitDescriptor，不存在 Descriptor 属性，直接传入
-                    if (!HasBoiling(owner)) return true; // 非本特性：走原逻辑
+                    if (!HasBoiling(owner)) return true;
                     if (_xpDragonCap == null) _xpDragonCap = BuildDragonXpCap();
                     __result = _xpDragonCap;
-                    return false; // 拦截原实现
+                    return false;
                 }
                 catch { return true; }
             }
@@ -330,7 +346,7 @@ namespace MDGA.GoldDragonMythic
                     0,0,2000,5000,9000,15000,23000,35000,51000,75000,105000,155000,220000,315000,445000,635000,890000,1300000,1800000,2550000,
                     3600000,4650000,5700000,6750000,7800000,8850000,9900000,10950000,12000000,13050000,14100000
                 };
-                int[] bonuses = full.Take(DragonCap + 1).ToArray(); // 0..30 共31项
+                int[] bonuses = full.Take(DragonCap + 1).ToArray();
                 var xp = new BlueprintStatProgression();
                 // 直接设置 Bonuses 属性（该类型在游戏中只用 Bonuses 读取）
                 var prop = typeof(BlueprintStatProgression).GetProperty("Bonuses", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
