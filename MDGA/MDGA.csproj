@@ -71,6 +71,9 @@
       <HintPath>E:\SteamLibrary\steamapps\common\Pathfinder Second Adventure\Wrath_Data\Managed\UnityEngine.IMGUIModule.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>E:\SteamLibrary\steamapps\common\Pathfinder Second Adventure\Wrath_Data\Managed\UnityEngine.UI.dll</HintPath>
+    </Reference>
     <Reference Include="UnityModManager">
       <HintPath>E:\SteamLibrary\steamapps\common\Pathfinder Second Adventure\Wrath_Data\Managed\UnityModManager\UnityModManager.dll</HintPath>
       <Private>False</Private>
@@ -116,6 +119,7 @@
     <WrathPath>E:\SteamLibrary\steamapps\common\Pathfinder Second Adventure</WrathPath>
     <!-- 输出到项目目录下 lib 文件夹，比 $(SolutionDir) 更稳 -->
     <PublicizeOutputDir>$(MSBuildProjectDirectory)\lib\</PublicizeOutputDir>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <!-- Publicize Target -->
@@ -131,6 +135,12 @@
     <PublicizeTask InputAssemblies="@(Assemblies)" OutputDir="$(SolutionDir)lib/" />
     <Move SourceFiles="@(PublicAssembly)" DestinationFiles="@(RenamedAssembly)" />
   </Target>
+
+  <!-- 标记 Assets 与 Blueprints 资源并复制到输出目录 -->
+  <ItemGroup>
+    <Content Include="Assets\**\*.*" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Blueprints\**\*.jbp" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 
   <!-- DLL Merging -->
   <Target Name="ILRepack" AfterTargets="Build">
@@ -166,6 +176,35 @@
 
     <!-- Clean up temp folder -->
     <RemoveDir Directories="$(ILRepackTempDir)" />
+  </Target>
+
+  <!-- Deploy target: copy merged MDGA.dll/pdb and Info.json to game Mods folder, remove other output files -->
+  <Target Name="Deploy" AfterTargets="ILRepack">
+    <PropertyGroup>
+      <!-- Use WrathPath property defined earlier as game root; change if needed -->
+      <DeployDir>$(WrathPath)\Mods\MDGA\</DeployDir>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <Files Include="$(OutputPath)**\*.*" />
+      <!-- remove extra dlls/pdbs so only the merged MDGA.dll stays -->
+      <Files Remove="$(OutputPath)**\*.dll" />
+      <Files Remove="$(OutputPath)**\*.pdb" />
+      <!-- explicitly include the merged assembly and pdb and Info.json -->
+      <Files Include="$(OutputPath)MDGA.dll" />
+      <Files Include="$(OutputPath)MDGA.pdb" />
+      <Files Include="$(MSBuildProjectDirectory)\Info.json" />
+      <!-- include Assets and Blueprints content so resources are deployed -->
+      <Files Include="$(OutputPath)Assets\**\*.*" />
+      <Files Include="$(OutputPath)Blueprints\**\*.*" />
+
+      <ToDelete Include="$(OutputPath)**\*.*" />
+      <ToDelete Remove="@(Files)" />
+    </ItemGroup>
+
+    <MakeDir Directories="$(DeployDir)" />
+    <Copy SourceFiles="@(Files)" DestinationFiles="@(Files->'$(DeployDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Delete Files="@(ToDelete)" />
   </Target>
 
   <ItemGroup>
@@ -218,30 +257,5 @@
       <Private>False</Private>
     </Reference>
   </ItemGroup>
-
-  <!-- Deploy target: copy merged MDGA.dll/pdb and Info.json to game Mods folder, remove other output files -->
-  <Target Name="Deploy" AfterTargets="ILRepack">
-    <PropertyGroup>
-      <!-- Use WrathPath property defined earlier as game root; change if needed -->
-      <DeployDir>$(WrathPath)\Mods\MDGA\</DeployDir>
-    </PropertyGroup>
-
-    <ItemGroup>
-      <Files Include="$(OutputPath)**\*.*" />
-      <!-- remove extra dlls/pdbs so only the merged MDGA.dll stays -->
-      <Files Remove="$(OutputPath)**\*.dll" />
-      <Files Remove="$(OutputPath)**\*.pdb" />
-      <!-- explicitly include the merged assembly and pdb and Info.json -->
-      <Files Include="$(OutputPath)MDGA.dll" />
-      <Files Include="$(OutputPath)MDGA.pdb" />
-      <Files Include="$(MSBuildProjectDirectory)\Info.json" />
-
-      <ToDelete Include="$(OutputPath)**\*.*" />
-      <ToDelete Remove="@(Files)" />
-    </ItemGroup>
-
-    <MakeDir Directories="$(DeployDir)" />
-    <Copy SourceFiles="@(Files)" DestinationFiles="@(Files->'$(DeployDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
-    <Delete Files="@(ToDelete)" />
-  </Target>
+  <ProjectExtensions><VisualStudio><UserProperties /></VisualStudio></ProjectExtensions>
 </Project>

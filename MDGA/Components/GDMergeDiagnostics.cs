@@ -18,6 +18,10 @@ namespace MDGA.Components
     // 仅用于定位“金龙合书”候选未出现/不可选的根因；不改变任何逻辑。
     internal static class GDMergeDiagnostics
     {
+        // 针对常见“丢法术”个案的蓝图 GUID（用于快速存在性检查）
+        private static readonly BlueprintGuid DivinePowerAbilityGuid = BlueprintGuid.Parse("ef16771cb05d1344989519e87f25b3c5");
+        private static readonly BlueprintGuid EaglesoulAbilityGuid = BlueprintGuid.Parse("332ad68273db9704ab0e92518f2efd1c");
+
         // 反射取值工具
         private static T GetPrivateField<T>(object obj, string name)
         {
@@ -91,6 +95,57 @@ namespace MDGA.Components
             }
             catch { }
             return any;
+        }
+
+        // 快照：转储单位拥有的具体 Spellbook 的详细信息，包括法表与已知法术（用于定位秘闻添加的神术是否仍在）
+        private static void DumpUnitSpellbooks(UnitDescriptor unit, IEnumerable<BlueprintSpellbookReference> allow)
+        {
+            try
+            {
+                if (unit == null) return;
+                var arr = allow?.ToArray() ?? Array.Empty<BlueprintSpellbookReference>();
+                Main.Log($"[GDDiag] Spellbook snapshot: allow={arr.Length}");
+                foreach (var r in arr)
+                {
+                    var bp = r?.Get(); if (bp == null) continue;
+                    var sb = unit.GetSpellbook(bp);
+                    var sbHas = sb != null;
+                    var listGuid = bp.SpellList?.AssetGuid ?? BlueprintGuid.Empty;
+                    // 反射取 IsArcane/IsDivine
+                    bool isArcane = false, isDivine = false;
+                    try { isArcane = (bool)(bp.GetType().GetProperty("IsArcane")?.GetValue(bp) ?? false); } catch { }
+                    try { isDivine = (bool)(bp.GetType().GetProperty("IsDivine")?.GetValue(bp) ?? false); } catch { }
+
+                    int knownCount = 0;
+                    bool hasDivinePower = false;
+                    bool hasEaglesoul = false;
+                    if (sbHas)
+                    {
+                        try
+                        {
+                            // 聚合 0..10 环的已知法术
+                            for (int lvl = 0; lvl <= 10; lvl++)
+                            {
+                                var knownLvl = sb.GetKnownSpells(lvl);
+                                if (knownLvl == null) continue;
+                                knownCount += knownLvl.Count;
+                                foreach (var ad in knownLvl)
+                                {
+                                    var guid = ad?.Blueprint?.AssetGuid ?? BlueprintGuid.Empty;
+                                    if (guid == DivinePowerAbilityGuid) hasDivinePower = true;
+                                    if (guid == EaglesoulAbilityGuid) hasEaglesoul = true;
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+                    Main.Log($"[GDDiag]   {bp.name}:{bp.AssetGuid} arcane={isArcane} divine={isDivine} list={(listGuid==BlueprintGuid.Empty?"null":listGuid.ToString())} has={(sbHas?"YES":"NO")} known={knownCount} DP={(hasDivinePower?"Y":"N")} ES={(hasEaglesoul?"Y":"N")}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Main.Log("[GDDiag] DumpUnitSpellbooks ex: " + ex.Message);
+            }
         }
 
         // 1) BlueprintsCache.Init 完成后，转储自定义合书特性的 AllowedSpellbooks、组件与前置清单
@@ -196,6 +251,9 @@ namespace MDGA.Components
                         }
                     }
                     catch { }
+
+                    // 详细转储单位法术书（含已知法术与关键法术是否存在），用于定位博学士秘闻加入的跨表法术是否仍在
+                    try { DumpUnitSpellbooks(unit, allow); } catch { }
                 }
                 catch (Exception ex) { Main.Log("[GDDiag] CanSelect PREFIX ex: " + ex.Message); }
             }

@@ -1,0 +1,43 @@
+{
+  "AssetId": "9f1c9c22-5c83-4c04-9f2f-2b4a9b4b6c7e",
+  "Data": {
+    "$type": "b6d078a4ae218fe4a82f3fb5707b7e1f, BlueprintBookPage",
+    "PrototypeLink": "",
+    "m_Overrides": [],
+    "Components": [],
+    "Comment": "MDGA - Zekarius epilogue page",
+    "ParentAsset": "c9c79bec91f6b7746a1bf49925dc74cc",
+    "ShowOnce": false,
+    "ShowOnceCurrentDialog": false,
+    "Conditions": {
+      "Operation": "And",
+      "Conditions": []
+    },
+    "Cues": [
+      "!bp_507E81E3-A0A2-41C3-9C73-5854EA74D3FA",
+      "!bp_121DF189-FBCC-4ED6-9078-C2E5C68237A5",
+      "!bp_EC96E5FD-CA7A-47F6-83E4-7E146C24BEEE",
+      "!bp_D098E711-59C3-4F8E-A237-6129B2F7F4E8",
+      "!bp_037054D2-3FB7-4BFD-B874-EE736B407F60",
+      "!bp_8055BB0A-B16C-48E7-B1F0-0071BC99832B"
+    ],
+    "Answers": [
+      "!bp_5c60cb734b268f640aec357ad4754ef4"
+    ],
+    "OnShow": {
+      "Actions": []
+    },
+    "ImageLink": {
+      "AssetId": "52163ec59b7bf62408b1b24137843bba"
+    },
+    "ForeImageLink": null,
+    "WithBaron": true,
+    "Title": {
+      "m_Key": "",
+      "m_OwnerString": "",
+      "m_OwnerPropertyPath": "",
+      "m_JsonPath": "",
+      "Shared": null
+    }
+  }
+}

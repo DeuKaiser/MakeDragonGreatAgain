@@ -33,8 +33,8 @@ namespace MDGA.GoldDragonMythic
         private const string GoldenDragonClassGuid = "daf1235b6217787499c14e4e32142523"; // 金龙神话职业
         private const string ExternalGoldDragonSpellbookGuid = "9a9ced35-fa75-4287-bc87-ba97e29812c5";
         private const string GoldDragonSpellbookGuid = "614b5ef6df084725aa872d43e0d0cd1e"; // 原版金龙法术书
-    // 混血术士专用法术书（用于允许 Crossblooded 参与合书）
-    private const string CrossbloodedSorcererSpellbookGuid = "cb0be5988031ebe4c947086a1170eacc";
+        // 混血术士专用法术书（用于允许 Crossblooded 参与合书）
+        private const string CrossbloodedSorcererSpellbookGuid = "cb0be5988031ebe4c947086a1170eacc";
         // 旧的复合神话列表 GUID，保留用于向后兼容（不再创建）
         private static readonly BlueprintGuid GD_CompositeMythicListGuid = BlueprintGuid.Parse("9d2c8f6c4d4f47d4846f42d6a2b70055");
 
@@ -195,6 +195,7 @@ namespace MDGA.GoldDragonMythic
             }
             catch (Exception ex) { Main.Log("[GD Merge][AllowedSB] Post-set summary error: " + ex.Message); }
             // 仅使用金龙神话法术列表进行合书
+            // 注意：此处将 `m_MythicSpellList` 指向 `GoldDragonSpellListMythic`（金龙自带的神话法术列表）。
             typeof(BlueprintFeatureSelectMythicSpellbook).GetField("m_MythicSpellList", BindingFlags.Instance | BindingFlags.NonPublic)?.SetValue(_customMerge, goldMythicList.ToReference<BlueprintSpellListReference>());
             // 自发已知表优先使用金龙，找不到则回退天使
             var knownTableToUse = goldSpellsKnown ?? angelKnown;
@@ -248,126 +249,6 @@ namespace MDGA.GoldDragonMythic
             }
 
             EnsureProgressionHasMergeFeature();
-        }
-
-        // 取消天使部分：不再增强天使法术列表
-        private static void AugmentAngelListInPlace(BlueprintSpellList angelList) { /* no-op: Angel part removed per new design */ }
-
-        // （原 BuildCompositeMythicList 已移除—保留方法名但留空，以兼容可能的外部引用）
-        private static void BuildCompositeMythicList(BlueprintSpellList angelList) { /* obsolete under strategy B */ }
-
-        private static void DumpSpellListStructure(BlueprintSpellList list)
-        {
-            if (list == null) return;
-            try
-            {
-                var flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
-                Main.Log("[GD Merge][Struct] Dumping fields of Angel Mythic SpellList type=" + list.GetType().FullName);
-                foreach (var f in list.GetType().GetFields(flags))
-                {
-                    var val = f.GetValue(list);
-                    Main.Log("[GD Merge][Struct] Field " + f.Name + " : " + f.FieldType.Name + " value=" + (val==null?"null":val.GetType().Name));
-                }
-                foreach (var p in list.GetType().GetProperties(flags))
-                {
-                    object val = null; try { if (p.GetIndexParameters().Length==0) val = p.GetValue(list,null); } catch { }
-                    Main.Log("[GD Merge][Struct] Prop " + p.Name + " : " + p.PropertyType.Name + " valueType=" + (val==null?"null":val.GetType().Name));
-                }
-            }
-            catch (Exception ex)
-            {
-                Main.Log("[GD Merge][Struct] Dump error: " + ex.Message);
-            }
-        }
-
-        private static void AugmentAngelListWithGoldDragon(BlueprintSpellList angel, BlueprintSpellList goldMythic, BlueprintSpellList goldBase)
-        {
-            try
-            {
-                if (angel == null) return;
-                var flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
-                var lvlField = typeof(BlueprintSpellList).GetField("m_SpellsByLevel", flags) ?? typeof(BlueprintSpellList).GetField("SpellsByLevel", flags);
-                object angelLevelsRaw = lvlField?.GetValue(angel) ?? typeof(BlueprintSpellList).GetProperty("SpellsByLevel", flags)?.GetValue(angel);
-                var angelEnum = angelLevelsRaw as System.Collections.IEnumerable; if (angelEnum == null) { Main.Log("[GD Merge] Angel list augment: cannot enumerate levels"); return; }
-                var levelListType = angelEnum.Cast<object>().FirstOrDefault()?.GetType(); if (levelListType == null) return;
-                var fLevel = levelListType.GetField("m_SpellLevel", flags) ?? levelListType.GetField("Level", flags) ?? levelListType.GetField("SpellLevel", flags);
-                var fSpells = levelListType.GetField("m_Spells", flags) ?? levelListType.GetField("Spells", flags);
-                var angelLevelObjects = angelEnum.Cast<object>().ToList();
-                var angelMap = new Dictionary<int, System.Collections.IList>();
-                foreach (var o in angelLevelObjects)
-                {
-                    int lv = (int)(fLevel?.GetValue(o) ?? 0);
-                    var list = fSpells?.GetValue(o) as System.Collections.IList;
-                    if (!angelMap.ContainsKey(lv) && list != null) angelMap[lv] = list;
-                }
-                int added = 0;
-                void MergeSrc(BlueprintSpellList src)
-                {
-                    if (src == null) return;
-                    object raw = lvlField?.GetValue(src) ?? typeof(BlueprintSpellList).GetProperty("SpellsByLevel", flags)?.GetValue(src);
-                    var srcEnum = raw as System.Collections.IEnumerable; if (srcEnum == null) return;
-                    foreach (var sl in srcEnum)
-                    {
-                        int level = (int)(fLevel?.GetValue(sl) ?? 0);
-                        // 仅合并高环独有法术（8-10 环）
-                        if (level < 8 || level > 10) continue;
-                        if (!angelMap.TryGetValue(level, out var target) || target == null) continue;
-                        var srcList = fSpells?.GetValue(sl) as System.Collections.IList; if (srcList == null) continue;
-                        foreach (var spellRef in srcList)
-                        {
-                            var guid = GetAbilityRefGuid(spellRef); if (guid == BlueprintGuid.Empty) continue;
-                            bool exists = false; foreach (var e in target) { if (GetAbilityRefGuid(e) == guid) { exists = true; break; } }
-                            if (!exists) { target.Add(spellRef); added++; }
-                        }
-                    }
-                }
-                MergeSrc(goldMythic); MergeSrc(goldBase);
-                Main.Log(added > 0 ? "[GD Merge] Augmented Angel mythic list with Gold Dragon high spells (L8-10) count=" + added : "[GD Merge] No unique Gold Dragon high spells to add (already present or disabled by settings)." );
-            }
-            catch (Exception ex) { Main.Log("[GD Merge] AugmentAngelList exception: " + ex.Message); }
-        }
-
-        private static void DumpMythicListDiagnostics(BlueprintSpellList list, string label)
-        {
-            if (list == null) { Main.Log("[GD Merge][ListDiag] " + label + " list=null"); return; }
-            try
-            {
-                var flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
-                var lvlField = typeof(BlueprintSpellList).GetField("m_SpellsByLevel", flags) ?? typeof(BlueprintSpellList).GetField("SpellsByLevel", flags);
-                object raw = lvlField?.GetValue(list) ?? typeof(BlueprintSpellList).GetProperty("SpellsByLevel", flags)?.GetValue(list);
-                var enumerable = raw as System.Collections.IEnumerable;
-                if (enumerable == null) { Main.Log("[GD Merge][ListDiag] " + label + " cannot enumerate levels"); return; }
-                int total = 0;
-                Main.Log("[GD Merge][ListDiag] ==== " + label + " BEGIN ====");
-                foreach (var lvlObj in enumerable)
-                {
-                    if (lvlObj == null) continue;
-                    var t = lvlObj.GetType();
-                    var fLevel = t.GetField("m_SpellLevel", flags) ?? t.GetField("Level", flags) ?? t.GetField("SpellLevel", flags);
-                    var fSpells = t.GetField("m_Spells", flags) ?? t.GetField("Spells", flags);
-                    int level = (int)(fLevel?.GetValue(lvlObj) ?? 0);
-                    var spellsList = fSpells?.GetValue(lvlObj) as System.Collections.IEnumerable;
-                    int count = 0; List<string> ids = null;
-                    if (spellsList != null)
-                    {
-                        ids = new List<string>();
-                        foreach (var s in spellsList)
-                        {
-                            count++;
-                            if (Main.Settings.VerboseLogging)
-                            {
-                                var guid = GetAbilityRefGuid(s);
-                                if (guid != BlueprintGuid.Empty) ids.Add(guid.ToString().Substring(0,8));
-                            }
-                        }
-                    }
-                    total += count;
-                    if (Main.Settings.VerboseLogging) Main.Log($"[GD Merge][ListDiag] L{level}: count={count} guids=[{string.Join(",", ids)}]"); else Main.Log($"[GD Merge][ListDiag] L{level}: count={count}");
-                }
-                Main.Log("[GD Merge][ListDiag] TOTAL spells=" + total + " label=" + label);
-                Main.Log("[GD Merge][ListDiag] ==== " + label + " END ====");
-            }
-            catch (Exception ex) { Main.Log("[GD Merge][ListDiag] Exception while dumping list: " + ex.Message); }
         }
 
         private static void EnsureProgressionHasMergeFeature()
