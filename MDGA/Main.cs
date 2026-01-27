@@ -5,6 +5,7 @@ using MDGA.GoldDragonMythic; // 引入以调用延迟执行 (修复命名空间)
 using System.IO;
 using UnityEngine;
 using MDGA.Loc; // localization injector
+using MDGA.Mythic; // call TrueDragon.ApplyIfDcEnabled
 
 namespace MDGA
 {
@@ -87,6 +88,8 @@ namespace MDGA
             }
             modEntry.OnToggle = OnToggle;
             Log("Loaded and patched.");
+            // 在加载完成后尝试应用 DC 真龙增强（若 DC 已启用）
+            try { TrueDragon.ApplyIfDcEnabled(); } catch { }
             GoldDragonAutoMerge.TryRunAfterUMMLoad();
             TryEarlyLocalizationInjection();
             ArcanaLateDescriptionFix.Ensure();
@@ -116,6 +119,8 @@ namespace MDGA
             Log("Toggled: " + value);
             if (value)
             {
+                // 重新启用时也尝试应用真龙增强
+                try { TrueDragon.ApplyIfDcEnabled(); } catch { }
                 GoldDragonAutoMerge.TryRunAfterUMMLoad();
                 TryEarlyLocalizationInjection();
                 LocalizationInjector.StartDelayed();
