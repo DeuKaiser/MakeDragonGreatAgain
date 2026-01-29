@@ -16,7 +16,7 @@ using Kingmaker.EntitySystem.Entities;
 using Kingmaker.EntitySystem; // for EntityFact
 using Kingmaker.Enums.Damage;
 
-namespace MDGA.GeneralClasses.DragonDisciple
+namespace MDGA.GeneralClasses.DraconicBloodline
 {
     [HarmonyPatch(typeof(DraconicBloodlineArcana), nameof(DraconicBloodlineArcana.OnEventAboutToTrigger))]
     [HarmonyPriority(Priority.First)] // 先于原有逻辑执行，以便完全替换加值算法

@@ -72,19 +72,11 @@ namespace MDGA.Story
                 var pagePath = Path.Combine(baseDir, "MDGA_ZekariusEpiloguePage.jbp");
                 var answerPath = Path.Combine(baseDir, "MDGA_ZekariusEpilogueAnswer.jbp");
 
-                // 依次注册所有 Cue
-                RegisterSingleBlueprintFromJson<BlueprintCue>(cueP1);
-                RegisterSingleBlueprintFromJson<BlueprintCue>(cueP2);
-                RegisterSingleBlueprintFromJson<BlueprintCue>(cueP3);
-                RegisterSingleBlueprintFromJson<BlueprintCue>(cueP4);
-                RegisterSingleBlueprintFromJson<BlueprintCue>(cueP5);
-                RegisterSingleBlueprintFromJson<BlueprintCue>(cueP6);
-                // 注册 Page（其 Cues 引用会解析到缓存）
-                RegisterSingleBlueprintFromJson<BlueprintBookPage>(pagePath);
-                // 注册 Continue Answer（供页引用）
-                RegisterSingleBlueprintFromJson<BlueprintAnswer>(answerPath);
-
-                Main.Log("[ZekariusEpilogue] Registered segmented cues, page and answer.");
+                // NOTE: Runtime registration of .jbp via Json deserialization is not save-safe in WotR.
+                // It can instantiate engine ScriptableObjects (e.g., SharedStringAsset) using 'new',
+                // which leads to serialization/save issues.
+                // Keep the files on disk for future tooling, but do not register them at runtime.
+                Main.Log("[ZekariusEpilogue] Custom epilogue blueprint registration is disabled (save-stability safeguard).");
             }
             catch (Exception ex)
             {

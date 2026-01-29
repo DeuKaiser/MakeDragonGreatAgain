@@ -88,8 +88,7 @@ namespace MDGA
             }
             modEntry.OnToggle = OnToggle;
             Log("Loaded and patched.");
-            // 在加载完成后尝试应用 DC 真龙增强（若 DC 已启用）
-            try { TrueDragon.ApplyIfDcEnabled(); } catch { }
+            // DC 真龙增强/补丁通过 BlueprintsCache.Init Harmony Patch 自动执行
             GoldDragonAutoMerge.TryRunAfterUMMLoad();
             TryEarlyLocalizationInjection();
             ArcanaLateDescriptionFix.Ensure();
@@ -119,8 +118,7 @@ namespace MDGA
             Log("Toggled: " + value);
             if (value)
             {
-                // 重新启用时也尝试应用真龙增强
-                try { TrueDragon.ApplyIfDcEnabled(); } catch { }
+                // DC 真龙增强/补丁通过 BlueprintsCache.Init Harmony Patch 自动执行
                 GoldDragonAutoMerge.TryRunAfterUMMLoad();
                 TryEarlyLocalizationInjection();
                 LocalizationInjector.StartDelayed();
