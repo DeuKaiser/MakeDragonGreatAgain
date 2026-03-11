@@ -14,6 +14,8 @@ using MDGA.Loc;
 using Kingmaker.Localization;
 using UnityEngine;
 using System.Collections;
+using Kingmaker.UnitLogic.Mechanics.Actions;
+using Kingmaker.ElementsSystem;
 
 using BlueprintCore.Blueprints.CustomConfigurators.Classes;
 using BlueprintCore.Blueprints.CustomConfigurators.UnitLogic.Abilities;
@@ -141,10 +143,14 @@ namespace MDGA.Mythic
                 }
                 catch { }
 
+                // Aura: create an AreaEffect + AreaBuff which applies effectBuff to party members in 30ft.
+                var areaEffect = CreateDragonMajestyAreaEffect(effectBuff);
+                var areaBuff = CreateDragonMajestyAreaBuff(areaEffect, loc, iconSprite);
+
                 var toggle = BlueprintCore.Blueprints.Configurators.UnitLogic.ActivatableAbilities.ActivatableAbilityConfigurator.New("MDGA_TD_DragonMajesty_Toggle", DragonMajestyToggleGuid)
                     .SetDisplayName(loc.NameKey)
                     .SetDescription(loc.DescKey)
-                    .SetBuff(effectBuff)
+                    .SetBuff(areaBuff)
                     .SetIcon(iconSprite)
                     .Configure();
 
@@ -163,6 +169,290 @@ namespace MDGA.Mythic
             catch (Exception ex)
             {
                 Main.Log("[TrueDragonModify] EnsureDragonMajestyBlueprints error: " + ex);
+            }
+        }
+
+        private static BlueprintAbilityAreaEffect CreateDragonMajestyAreaEffect(BlueprintBuff effectBuff)
+        {
+            var existing = ResourcesLibrary.TryGetBlueprint<BlueprintAbilityAreaEffect>(BlueprintGuid.Parse(DragonMajestyAreaEffectGuid));
+            if (existing != null) return existing;
+
+            // Build an AreaEffect mirroring DarkRitesAreaEffect behavior: on party member enter apply buff, on exit remove.
+            var areaEffect = BlueprintCore.Blueprints.CustomConfigurators.UnitLogic.Abilities.AbilityAreaEffectConfigurator
+                .New("MDGA_TD_DragonMajesty_AreaEffect", DragonMajestyAreaEffectGuid)
+                .Configure();
+
+            // Configure shape/size via reflection for compatibility across game builds.
+            try
+            {
+                // Shape is an enum (AreaEffectShape)
+                var shapeType = AccessTools.TypeByName("Kingmaker.UnitLogic.Abilities.Blueprints.AreaEffectShape")
+                    ?? AccessTools.TypeByName("Kingmaker.UnitLogic.Abilities.Components.AreaEffects.AreaEffectShape")
+                    ?? AccessTools.TypeByName("Kingmaker.UnitLogic.Abilities.Components.AreaEffects.AreaEffectShape");
+                if (shapeType != null && shapeType.IsEnum)
+                {
+                    var cylinder = Enum.Parse(shapeType, "Cylinder");
+                    SetFieldOrProperty(areaEffect, "Shape", cylinder);
+                }
+                // Size is Kingmaker.Utility.Feet in some builds.
+                var feetType = AccessTools.TypeByName("Kingmaker.Utility.Feet");
+                if (feetType != null)
+                {
+                    var feetVal = Activator.CreateInstance(feetType, new object[] { 30f });
+                    SetFieldOrProperty(areaEffect, "Size", feetVal);
+                }
+                else
+                {
+                    // Fallback for older dumps where Size is a struct with m_Value
+                    var sizeObj = GetFieldOrProperty(areaEffect, "Size");
+                    if (sizeObj != null)
+                        SetFieldOrProperty(sizeObj, "m_Value", 30f);
+                }
+
+                SetFieldOrProperty(areaEffect, "AffectEnemies", false);
+
+                // Extra safety: ensure target type is Ally (prevents enemy units from triggering the aura logic)
+                var targetTypeEnum = AccessTools.TypeByName("Kingmaker.UnitLogic.Abilities.Blueprints.BlueprintAbilityAreaEffect+TargetType");
+                if (targetTypeEnum != null && targetTypeEnum.IsEnum)
+                {
+                    var ally = Enum.Parse(targetTypeEnum, "Ally");
+                    SetFieldOrProperty(areaEffect, "m_TargetType", ally);
+                }
+            }
+            catch (Exception ex)
+            {
+                Main.Log("[TrueDragonModify] AreaEffect shape/size setup failed: " + ex.Message);
+            }
+
+            var runActionType = AccessTools.TypeByName("Kingmaker.UnitLogic.Abilities.Components.AreaEffects.AbilityAreaEffectRunAction");
+            if (runActionType == null)
+            {
+                Main.Log("[TrueDragonModify] AbilityAreaEffectRunAction type not found; aura will not apply to allies.");
+                return areaEffect;
+            }
+
+            var runAction = Activator.CreateInstance(runActionType) as BlueprintComponent;
+            if (runAction == null) return areaEffect;
+            if (string.IsNullOrEmpty(runAction.name)) runAction.name = runAction.GetType().Name;
+
+            var apply = new ContextActionApplyBuff
+            {
+                m_Buff = effectBuff.ToReference<BlueprintBuffReference>(),
+                Permanent = true,
+                AsChild = true,
+                IsFromSpell = false,
+                ToCaster = false,
+            };
+            apply.name = apply.GetType().Name;
+
+            var remove = new ContextActionRemoveBuff
+            {
+                m_Buff = effectBuff.ToReference<BlueprintBuffReference>(),
+                ToCaster = false,
+                RemoveRank = false,
+            };
+            remove.name = remove.GetType().Name;
+
+            // Conditions: (party member OR caster) AND does NOT already have the effect buff.
+            // This prevents both double icons and stacking when multiple auras overlap.
+            var conditionalAction = CreatePartyOrCasterWithoutBuffConditional(apply, effectBuff);
+            var unitEnter = new ActionList { Actions = conditionalAction != null ? new GameAction[] { conditionalAction } : new GameAction[] { apply } };
+            var unitExit = new ActionList { Actions = new GameAction[] { remove } };
+            var empty = new ActionList { Actions = Array.Empty<GameAction>() };
+
+            SetFieldOrProperty(runAction, "UnitEnter", unitEnter);
+            SetFieldOrProperty(runAction, "UnitExit", unitExit);
+            SetFieldOrProperty(runAction, "UnitMove", empty);
+            SetFieldOrProperty(runAction, "Round", empty);
+
+            var comps = areaEffect.ComponentsArray ?? Array.Empty<BlueprintComponent>();
+            comps = EnsureComponentNames(comps);
+            areaEffect.ComponentsArray = comps.Concat(new BlueprintComponent[] { runAction }).ToArray();
+            areaEffect.ComponentsArray = EnsureComponentNames(areaEffect.ComponentsArray);
+
+            return areaEffect;
+        }
+
+        private static GameAction CreatePartyOrCasterWithoutBuffConditional(GameAction ifTrue, BlueprintBuff checkBuff)
+        {
+            try
+            {
+                var condPartyType = AccessTools.TypeByName("Kingmaker.Designers.Mechanics.Conditions.ContextConditionIsPartyMember")
+                    ?? AccessTools.TypeByName("Kingmaker.UnitLogic.Mechanics.Conditions.ContextConditionIsPartyMember");
+                var condCasterType = AccessTools.TypeByName("Kingmaker.Designers.Mechanics.Conditions.ContextConditionIsCaster")
+                    ?? AccessTools.TypeByName("Kingmaker.UnitLogic.Mechanics.Conditions.ContextConditionIsCaster");
+                var condHasBuffType = AccessTools.TypeByName("Kingmaker.Designers.Mechanics.Conditions.ContextConditionHasBuff")
+                    ?? AccessTools.TypeByName("Kingmaker.UnitLogic.Mechanics.Conditions.ContextConditionHasBuff");
+                var conditionalType = AccessTools.TypeByName("Kingmaker.Designers.EventConditionActionSystem.Actions.Conditional")
+                    ?? AccessTools.TypeByName("Kingmaker.ElementsSystem.Conditional");
+                if (condPartyType == null || condCasterType == null || condHasBuffType == null || conditionalType == null)
+                    return null;
+
+                var condParty = Activator.CreateInstance(condPartyType) as Condition;
+                var condCaster = Activator.CreateInstance(condCasterType) as Condition;
+                var condHasBuff = Activator.CreateInstance(condHasBuffType) as Condition;
+                if (condParty == null || condCaster == null || condHasBuff == null)
+                    return null;
+
+                // ContextConditionHasBuff typically has field/property m_Buff.
+                SetFieldOrProperty(condHasBuff, "m_Buff", checkBuff.ToReference<BlueprintBuffReference>());
+                // We want NOT(has buff)
+                SetFieldOrProperty(condHasBuff, "Not", true);
+
+                if (string.IsNullOrEmpty(condParty.name)) condParty.name = condParty.GetType().Name;
+                if (string.IsNullOrEmpty(condCaster.name)) condCaster.name = condCaster.GetType().Name;
+                if (string.IsNullOrEmpty(condHasBuff.name)) condHasBuff.name = condHasBuff.GetType().Name;
+
+                // (party OR caster) AND NOT has buff
+                // ConditionsChecker cannot directly nest another ConditionsChecker in its Conditions array,
+                // so rely on Conditional supporting a checker with Operation=And and the first condition being an inlined OR checker
+                // via reflection if supported.
+                var checker = new ConditionsChecker { Operation = Operation.And, Conditions = new Condition[] { condHasBuff } };
+                // Try to set an extra field/property if this build supports a nested checker.
+                // Fallback: just use NOT has buff (still prevents stacking/icons; will also affect non-party, but area targets allies anyway).
+                try
+                {
+                    var isPartyOrCaster = new ConditionsChecker { Operation = Operation.Or, Conditions = new Condition[] { condParty, condCaster } };
+                    SetFieldOrProperty(checker, "Nested", isPartyOrCaster);
+                    SetFieldOrProperty(checker, "Checker", isPartyOrCaster);
+                    SetFieldOrProperty(checker, "m_Nested", isPartyOrCaster);
+                }
+                catch { }
+                var ifTrueList = new ActionList { Actions = new GameAction[] { ifTrue } };
+                var ifFalseList = new ActionList { Actions = Array.Empty<GameAction>() };
+
+                var conditional = Activator.CreateInstance(conditionalType) as GameAction;
+                if (conditional == null) return null;
+                if (string.IsNullOrEmpty(conditional.name)) conditional.name = conditional.GetType().Name;
+                SetFieldOrProperty(conditional, "ConditionsChecker", checker);
+                SetFieldOrProperty(conditional, "IfTrue", ifTrueList);
+                SetFieldOrProperty(conditional, "IfFalse", ifFalseList);
+                return conditional;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static BlueprintBuff CreateDragonMajestyAreaBuff(BlueprintAbilityAreaEffect areaEffect, DragonMajestyLoc loc, Sprite iconSprite)
+        {
+            var existing = ResourcesLibrary.TryGetBlueprint<BlueprintBuff>(BlueprintGuid.Parse(DragonMajestyAreaBuffGuid));
+            if (existing != null) return existing;
+
+            var areaBuff = BuffConfigurator.New("MDGA_TD_DragonMajesty_AreaBuff", DragonMajestyAreaBuffGuid)
+                .SetDisplayName(loc.NameKey)
+                .SetDescription(loc.DescKey)
+                .SetIcon(iconSprite)
+                .SetFlags(BlueprintBuff.Flags.HiddenInUi)
+                .Configure();
+
+            try
+            {
+                // Attach area effect to the owner
+                // Dark Rites uses Kingmaker.UnitLogic.Buffs.Components.AddAreaEffect
+                var addAreaType = AccessTools.TypeByName("Kingmaker.UnitLogic.Buffs.Components.AddAreaEffect")
+                    ?? AccessTools.TypeByName("Kingmaker.UnitLogic.FactLogic.AddAreaEffect");
+
+                var addArea = addAreaType != null ? Activator.CreateInstance(addAreaType) as BlueprintComponent : null;
+                if (addArea != null)
+                {
+                    if (string.IsNullOrEmpty(addArea.name)) addArea.name = addArea.GetType().Name;
+                    // m_AreaEffect is a BlueprintAbilityAreaEffectReference field in most builds.
+                    SetFieldOrProperty(addArea, "m_AreaEffect", areaEffect.ToReference<BlueprintAbilityAreaEffectReference>());
+                    var comps = areaBuff.ComponentsArray ?? Array.Empty<BlueprintComponent>();
+                    comps = EnsureComponentNames(comps);
+                    areaBuff.ComponentsArray = comps.Concat(new BlueprintComponent[] { addArea }).ToArray();
+                    areaBuff.ComponentsArray = EnsureComponentNames(areaBuff.ComponentsArray);
+
+                    Main.Log("[TrueDragonModify] Dragon Majesty AreaBuff: AddAreaEffect attached (" + addAreaType.FullName + ")");
+                }
+                else
+                {
+                    Main.Log("[TrueDragonModify] Dragon Majesty AreaBuff: failed to create AddAreaEffect component; aura will not work.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Main.Log("[TrueDragonModify] CreateDragonMajestyAreaBuff error: " + ex);
+            }
+
+            try
+            {
+                LocalizationInjector.BindKeyAndText(areaBuff, "m_DisplayName", loc.NameKey, GetDragonMajestyNameText(loc));
+                LocalizationInjector.BindKeyAndText(areaBuff, "m_Description", loc.DescKey, GetDragonMajestyDescText(loc));
+            }
+            catch { }
+
+            return areaBuff;
+        }
+
+        private static GameAction CreatePartyOrCasterConditional(GameAction ifTrue)
+        {
+            try
+            {
+                var condPartyType = AccessTools.TypeByName("Kingmaker.Designers.Mechanics.Conditions.ContextConditionIsPartyMember")
+                    ?? AccessTools.TypeByName("Kingmaker.UnitLogic.Mechanics.Conditions.ContextConditionIsPartyMember");
+                var condCasterType = AccessTools.TypeByName("Kingmaker.Designers.Mechanics.Conditions.ContextConditionIsCaster")
+                    ?? AccessTools.TypeByName("Kingmaker.UnitLogic.Mechanics.Conditions.ContextConditionIsCaster");
+                var conditionalType = AccessTools.TypeByName("Kingmaker.Designers.EventConditionActionSystem.Actions.Conditional")
+                    ?? AccessTools.TypeByName("Kingmaker.ElementsSystem.Conditional");
+                if (condPartyType == null || condCasterType == null || conditionalType == null)
+                    return null;
+
+                var condParty = Activator.CreateInstance(condPartyType) as Condition;
+                var condCaster = Activator.CreateInstance(condCasterType) as Condition;
+                if (condParty == null || condCaster == null)
+                    return null;
+                if (string.IsNullOrEmpty(condParty.name)) condParty.name = condParty.GetType().Name;
+                if (string.IsNullOrEmpty(condCaster.name)) condCaster.name = condCaster.GetType().Name;
+
+                var checker = new ConditionsChecker { Operation = Operation.Or, Conditions = new Condition[] { condParty, condCaster } };
+                var ifTrueList = new ActionList { Actions = new GameAction[] { ifTrue } };
+                var ifFalseList = new ActionList { Actions = Array.Empty<GameAction>() };
+
+                var conditional = Activator.CreateInstance(conditionalType) as GameAction;
+                if (conditional == null) return null;
+                if (string.IsNullOrEmpty(conditional.name)) conditional.name = conditional.GetType().Name;
+                SetFieldOrProperty(conditional, "ConditionsChecker", checker);
+                SetFieldOrProperty(conditional, "IfTrue", ifTrueList);
+                SetFieldOrProperty(conditional, "IfFalse", ifFalseList);
+                return conditional;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static object GetFieldOrProperty(object obj, string name)
+        {
+            if (obj == null) return null;
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic;
+            var t = obj.GetType();
+            var p = t.GetProperty(name, flags);
+            if (p != null) return p.GetValue(obj, null);
+            var f = t.GetField(name, flags);
+            if (f != null) return f.GetValue(obj);
+            return null;
+        }
+
+        private static void SetFieldOrProperty(object obj, string name, object value)
+        {
+            if (obj == null) return;
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic;
+            var t = obj.GetType();
+            var p = t.GetProperty(name, flags);
+            if (p != null && p.CanWrite)
+            {
+                p.SetValue(obj, value, null);
+                return;
+            }
+            var f = t.GetField(name, flags);
+            if (f != null)
+            {
+                f.SetValue(obj, value);
+                return;
             }
         }
 

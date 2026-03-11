@@ -32,6 +32,7 @@ namespace MDGA.GeneralClasses.DraconicBloodline
 
         // Existing assets
         private static readonly BlueprintGuid GoldProgressionGuid = BlueprintGuid.Parse("6c67ef823db8d7d45bb0ef82f959743d");
+        private static readonly BlueprintGuid SeekerGoldProgressionGuid = BlueprintGuid.Parse("63c9d62a56e6921409a58de1ab9a9f9b");
         private static readonly BlueprintGuid GoldWyrmsIconFeatureGuid = BlueprintGuid.Parse("3247396087a747148b17e1a0e37a3e67");
 
         [HarmonyPatch(typeof(BlueprintsCache), nameof(BlueprintsCache.Init))]
@@ -146,16 +147,25 @@ namespace MDGA.GeneralClasses.DraconicBloodline
             }
             catch { }
 
-            // Attach to Gold Draconic Bloodline progression level 1
-            var prog = ResourcesLibrary.TryGetBlueprint<BlueprintProgression>(GoldProgressionGuid);
+            var featureBlueprint = ResourcesLibrary.TryGetBlueprint<BlueprintFeature>(FeatureGuid);
+            var featureRef = featureBlueprint != null ? featureBlueprint.ToReference<BlueprintFeatureBaseReference>() : null;
+
+            // Attach to base Gold Draconic Bloodline progression level 1
+            TryAddToProgression(GoldProgressionGuid, featureRef, "Gold Draconic Bloodline");
+
+            // Attach to Seeker Gold Draconic Bloodline progression level 1
+            TryAddToProgression(SeekerGoldProgressionGuid, featureRef, "Seeker Gold Draconic Bloodline");
+        }
+
+        private static void TryAddToProgression(BlueprintGuid progGuid, BlueprintFeatureBaseReference featureRef, string tag)
+        {
+            var prog = ResourcesLibrary.TryGetBlueprint<BlueprintProgression>(progGuid);
             if (prog == null)
             {
-                Main.Log("[CharismaAdd] Gold progression not found: " + GoldProgressionGuid);
+                Main.Log("[CharismaAdd] Progression not found: " + progGuid);
                 return;
             }
 
-            var featureBlueprint = ResourcesLibrary.TryGetBlueprint<BlueprintFeature>(FeatureGuid);
-            var featureRef = featureBlueprint != null ? featureBlueprint.ToReference<BlueprintFeatureBaseReference>() : null;
             var level1 = prog.LevelEntries?.FirstOrDefault(le => le.Level == 1);
             if (level1 == null)
             {
@@ -170,7 +180,7 @@ namespace MDGA.GeneralClasses.DraconicBloodline
                     level1.m_Features = new List<BlueprintFeatureBaseReference>();
                 }
                 level1.m_Features.Add(featureRef);
-                Main.Log("[CharismaAdd] Injected charisma floor feature into Gold Draconic Bloodline L1.");
+                Main.Log("[CharismaAdd] Injected Mengkare Project feature into " + tag + " L1.");
             }
         }
 
