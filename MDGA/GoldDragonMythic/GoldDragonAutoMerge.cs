@@ -8,6 +8,7 @@ using Kingmaker.Blueprints.Classes.Spells;
 using Kingmaker.Blueprints.JsonSystem;
 using System.Text.RegularExpressions; // 已添加
 using Kingmaker.UnitLogic.Class.LevelUp; // 用于 FeatureSelectionState、LevelUpState
+using Kingmaker.UnitLogic.Class.LevelUp.Actions;
 using Kingmaker.UnitLogic; // UnitDescriptor
 using Kingmaker.Blueprints.Root; // BlueprintRoot，用于动态收集法术书
 using Kingmaker.Localization; // 已添加
@@ -17,6 +18,7 @@ using System.Collections.Generic;
 using Kingmaker; // 如需游戏日志
 using Kingmaker.UnitLogic.Abilities.Blueprints; // 为 BlueprintAbilityReference 添加
 using Kingmaker.Blueprints.Classes.Prerequisites;
+using Kingmaker.Blueprints.Classes.Selection;
 using MDGA.Loc; // PrerequisiteFeaturesFromList
 
 namespace MDGA.GoldDragonMythic
@@ -33,6 +35,13 @@ namespace MDGA.GoldDragonMythic
         private const string GoldenDragonClassGuid = "daf1235b6217787499c14e4e32142523"; // 金龙神话职业
         private const string ExternalGoldDragonSpellbookGuid = "9a9ced35-fa75-4287-bc87-ba97e29812c5";
         private const string GoldDragonSpellbookGuid = "614b5ef6df084725aa872d43e0d0cd1e"; // 原版金龙法术书
+        private static readonly BlueprintGuid GD_BonusSpellListGuid = BlueprintGuid.Parse("8a9c2b7e1f9b4f1da516c1e7a33d1001");
+        private static readonly BlueprintGuid[] GD_BonusSpellChoiceGuids = new[]
+        {
+            BlueprintGuid.Parse("8a9c2b7e1f9b4f1da516c1e7a33d1002"),
+            BlueprintGuid.Parse("8a9c2b7e1f9b4f1da516c1e7a33d1003"),
+            BlueprintGuid.Parse("8a9c2b7e1f9b4f1da516c1e7a33d1004"),
+        };
         // 混血术士专用法术书（用于允许 Crossblooded 参与合书）
         private const string CrossbloodedSorcererSpellbookGuid = "cb0be5988031ebe4c947086a1170eacc";
         // 旧的复合神话列表 GUID，保留用于向后兼容（不再创建）
@@ -42,13 +51,17 @@ namespace MDGA.GoldDragonMythic
         private static bool _ran;
 
         private static BlueprintFeatureSelectMythicSpellbook _customMerge; // 缓存引用
+        private static BlueprintSpellList _bonusSpellList;
+        private static BlueprintParametrizedFeature[] _bonusSpellChoices = Array.Empty<BlueprintParametrizedFeature>();
         // 不再使用复合或天使增强列表
         private static BlueprintSpellList _compositeList = null;
 
         private static string _gdOverrideNameZh = "神话法术书";
-        private static string _gdOverrideDescZh = "当你踏上金龙之路并达到神话阶层8时，你可以选择将金龙神话施法进度与之前的一个非神话施法职业合并，或使用一部独立的金龙神话法术书。\n合并时：你的金龙神话阶层与所选职业的施法者等级累加（总施法者等级上限30），使用原职业的法术位施放“金龙法术”。提升施法者等级可加强这些法术。复合列表中的金龙专属法术只会在你能够施放相应环位时出现。自发施法职业同时按原职业与神话阶层分别获得新的已知法术。\n独立时：获得一部仅包含金龙神话法术（及其专属法术）的独立法术书，拥有自己独立的进度与法术位；其法术位数量不能通过（其他职业的）施法者等级提升，只随神话阶层推进。\n若你是多职业或不希望改变原职业法术位分配，推荐使用独立法术书；若你是纯或近纯单一施法职业，推荐合并以获得更高的总施法者等级。\n前提：需要拥有龙族血统，且不能与金龙自身或另一部神话法术书再次合书。";
+        private static string _gdOverrideDescZh = "当你踏上金龙之路并达到神话阶层8时，你可以选择将金龙神话施法进度与之前的一个非神话施法职业合并，或使用一部独立的金龙神话法术书。\n合并时：你的金龙神话阶层与所选职业的施法者等级累加（总施法者等级上限30），使用原职业的法术位施放“金龙法术”。提升施法者等级可加强这些法术。复合列表中的金龙专属法术只会在你能够施放相应环位时出现。自发施法职业同时按原职业与神话阶层分别获得新的已知法术。你还可以额外选择3个金龙普通法术，加入被合并的职业法术书。\n独立时：获得一部仅包含金龙神话法术（及其专属法术）的独立法术书，拥有自己独立的进度与法术位；其法术位数量不能通过（其他职业的）施法者等级提升，只随神话阶层推进。\n若你是多职业或不希望改变原职业法术位分配，推荐使用独立法术书；若你是纯或近纯单一施法职业，推荐合并以获得更高的总施法者等级。\n前提：需要拥有龙族血统，且不能与金龙自身或另一部神话法术书再次合书。";
         private static string _gdOverrideNameEn = "Mythic Spellbook";
-        private static string _gdOverrideDescEn = "When you reach Mythic Rank 8 on the Golden Dragon path, you may either merge the Golden Dragon mythic spell progression with one previous non‑mythic casting class, or use an independent Golden Dragon mythic spellbook.\nMerged: Your Golden Dragon mythic ranks stack with the chosen class for caster level (total caster level cap 30). You use that class's spell slots to cast a \"Golden Dragon list\" . Increasing caster level empowers these spells. Golden Dragon unique spells only appear once you can cast their spell level. Spontaneous casters gain new known spells from both the base class progression and mythic ranks.\nIndependent: You gain a separate Golden Dragon mythic spellbook that contains only Golden Dragon mythic spells (including its unique spells). It has its own progression and slots; its slots scale only with mythic rank and are not increased by other caster levels.\nRecommendation: Choose the independent book if you are multi‑classed or do not want to alter your base class slot progression. Choose merging if you are a pure or near‑pure single casting class to reach a higher effective caster level.\nPrerequisite: You must possess a draconic bloodline. You cannot merge with the Golden Dragon spellbook itself again or with another mythic spellbook.";
+        private static string _gdOverrideDescEn = "When you reach Mythic Rank 8 on the Golden Dragon path, you may either merge the Golden Dragon mythic spell progression with one previous non-mythic casting class, or use an independent Golden Dragon mythic spellbook.\nMerged: Your Golden Dragon mythic ranks stack with the chosen class for caster level (total caster level cap 30). You use that class's spell slots to cast a \"Golden Dragon list\". Increasing caster level empowers these spells. Golden Dragon unique spells only appear once you can cast their spell level. Spontaneous casters gain new known spells from both the base class progression and mythic ranks. You also choose 3 non-mythic Golden Dragon spells and add them to the merged class spellbook.\nIndependent: You gain a separate Golden Dragon mythic spellbook that contains only Golden Dragon mythic spells (including its unique spells). It has its own progression and slots; its slots scale only with mythic rank and are not increased by other caster levels.\nRecommendation: Choose the independent book if you are multi-classed or do not want to alter your base class slot progression. Choose merging if you are a pure or near-pure single casting class to reach a higher effective caster level.\nPrerequisite: You must possess a draconic bloodline. You cannot merge with the Golden Dragon spellbook itself again or with another mythic spellbook.";
+        private static readonly string[] BonusSpellSuffixZh = { "I", "II", "III" };
+        private static readonly string[] BonusSpellSuffixEn = { "I", "II", "III" };
 
         // 判定是否拥有“龙族血脉”的基准特性（与 DragonBloodActivation 中保持一致）
         private static readonly BlueprintGuid[] DraconicRequisiteGuids = new[]
@@ -135,15 +148,10 @@ namespace MDGA.GoldDragonMythic
         {
             _externalGoldDragonSpellbookPresent = ResourcesLibrary.TryGetBlueprint<BlueprintSpellbook>(ExternalGoldDragonSpellbookGuid) != null;
 
-            if (_customMerge != null)
-            {
-                EnsureProgressionHasMergeFeature();
-                return;
-            }
-
             var angelMerge = ResourcesLibrary.TryGetBlueprint<BlueprintFeatureSelectMythicSpellbook>(AngelMergeFeatureGuid);
             // 获取金龙神话法术列表
             var goldBook = ResourcesLibrary.TryGetBlueprint<BlueprintSpellbook>(GoldDragonSpellbookGuid);
+            BlueprintSpellList goldNormalList = goldBook?.SpellList;
             BlueprintSpellList goldMythicList = null;
             BlueprintSpellsTable goldSpellsKnown = null;
             if (goldBook != null)
@@ -157,6 +165,13 @@ namespace MDGA.GoldDragonMythic
                 var fKnown = goldBook.GetType().GetField("m_SpellKnownForSpontaneous", flags);
                 var knownRef = fKnown?.GetValue(goldBook) as BlueprintSpellsTableReference;
                 goldSpellsKnown = knownRef?.Get();
+            }
+
+            if (_customMerge != null)
+            {
+                EnsureBonusSpellChoices(goldNormalList);
+                EnsureProgressionHasMergeFeature();
+                return;
             }
 
             var angelKnown = ResourcesLibrary.TryGetBlueprint<BlueprintSpellsTable>(AngelSpellsKnownTableGuid);
@@ -249,6 +264,7 @@ namespace MDGA.GoldDragonMythic
             }
 
             EnsureProgressionHasMergeFeature();
+            EnsureBonusSpellChoices(goldNormalList);
         }
 
         private static void EnsureProgressionHasMergeFeature()
@@ -300,6 +316,371 @@ namespace MDGA.GoldDragonMythic
                 catch (Exception ex) { Main.Log("[GD Merge] Progression placement log error: " + ex.Message); }
             }
             catch (Exception ex) { Main.Log("[GD Merge] EnsureProgressionHasMergeFeature error: " + ex.Message); }
+        }
+
+        private static void EnsureBonusSpellChoicesFromGame()
+        {
+            try
+            {
+                if (_bonusSpellList != null && _bonusSpellChoices.Length == GD_BonusSpellChoiceGuids.Length)
+                    return;
+                var goldBook = ResourcesLibrary.TryGetBlueprint<BlueprintSpellbook>(GoldDragonSpellbookGuid);
+                EnsureBonusSpellChoices(goldBook?.SpellList);
+            }
+            catch (Exception ex)
+            {
+                if (Main.Settings.VerboseLogging) Main.Log("[GD Merge][BonusSpells] Ensure from game error: " + ex.Message);
+            }
+        }
+
+        private static void EnsureBonusSpellChoices(BlueprintSpellList goldNormalList)
+        {
+            try
+            {
+                if (goldNormalList == null)
+                {
+                    Main.Log("[GD Merge][BonusSpells] Gold Dragon normal spell list missing; bonus spell choices skipped.");
+                    return;
+                }
+
+                _bonusSpellList = EnsureFixedBonusSpellList(goldNormalList);
+                if (_bonusSpellList == null)
+                {
+                    Main.Log("[GD Merge][BonusSpells] Failed to build fixed bonus spell list.");
+                    return;
+                }
+
+                var variants = BuildBonusSpellVariants(_bonusSpellList);
+                var choices = new List<BlueprintParametrizedFeature>();
+                for (int i = 0; i < GD_BonusSpellChoiceGuids.Length; i++)
+                {
+                    var choice = ResourcesLibrary.TryGetBlueprint<BlueprintParametrizedFeature>(GD_BonusSpellChoiceGuids[i]);
+                    bool created = false;
+                    if (choice == null)
+                    {
+                        choice = CreateParametrizedFeature();
+                        choice.name = "GoldenDragonMergedBonusSpell" + (i + 1);
+                        SetGuid(choice, GD_BonusSpellChoiceGuids[i]);
+                        created = true;
+                    }
+
+                    ConfigureBonusSpellChoice(choice, i, variants);
+                    if (created)
+                    {
+                        Register(choice, "[GD Merge][BonusSpells]");
+                    }
+                    choices.Add(choice);
+                }
+                _bonusSpellChoices = choices.Where(c => c != null).ToArray();
+                if (Main.Settings.VerboseLogging)
+                    Main.Log($"[GD Merge][BonusSpells] Registered choices={_bonusSpellChoices.Length}, variants={variants.Length}");
+            }
+            catch (Exception ex)
+            {
+                Main.Log("[GD Merge][BonusSpells] EnsureBonusSpellChoices error: " + ex);
+            }
+        }
+
+        private static BlueprintSpellList EnsureFixedBonusSpellList(BlueprintSpellList source)
+        {
+            var list = ResourcesLibrary.TryGetBlueprint<BlueprintSpellList>(GD_BonusSpellListGuid);
+            bool created = false;
+            if (list == null)
+            {
+                try { list = (BlueprintSpellList)Activator.CreateInstance(typeof(BlueprintSpellList)); }
+                catch { list = (BlueprintSpellList)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(BlueprintSpellList)); }
+                list.name = "GoldenDragonMergeBonusSpellList";
+                SetGuid(list, GD_BonusSpellListGuid);
+                created = true;
+            }
+
+            list.IsMythic = false;
+            var fixedLevels = new SpellLevelList[11];
+            for (int level = 0; level <= 10; level++)
+            {
+                var fixedLevel = new SpellLevelList(level);
+                if (level > 0 && source.SpellsByLevel != null && level < source.SpellsByLevel.Length)
+                {
+                    var seenInLevel = new HashSet<BlueprintGuid>();
+                    foreach (var spell in source.SpellsByLevel[level].SpellsFiltered)
+                    {
+                        if (spell == null) continue;
+                        if (!seenInLevel.Add(spell.AssetGuid)) continue;
+                        fixedLevel.SpellsRefs.Add(spell.ToReference<BlueprintAbilityReference>());
+                    }
+                }
+                fixedLevels[level] = fixedLevel;
+            }
+            list.SpellsByLevel = fixedLevels;
+
+            if (created)
+            {
+                Register(list, "[GD Merge][BonusSpells]");
+            }
+            try { list.OnEnable(); } catch { }
+            return list;
+        }
+
+        private static AnyBlueprintReference[] BuildBonusSpellVariants(BlueprintSpellList spellList)
+        {
+            if (spellList?.SpellsByLevel == null) return Array.Empty<AnyBlueprintReference>();
+            var seen = new HashSet<BlueprintGuid>();
+            var result = new List<AnyBlueprintReference>();
+            foreach (var level in spellList.SpellsByLevel.OrderBy(l => l.SpellLevel))
+            {
+                foreach (var spell in level.SpellsFiltered)
+                {
+                    if (spell == null || !seen.Add(spell.AssetGuid)) continue;
+                    result.Add(spell.ToReference<AnyBlueprintReference>());
+                }
+            }
+            return result.ToArray();
+        }
+
+        private static BlueprintParametrizedFeature CreateParametrizedFeature()
+        {
+            try { return (BlueprintParametrizedFeature)Activator.CreateInstance(typeof(BlueprintParametrizedFeature)); }
+            catch { return (BlueprintParametrizedFeature)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(BlueprintParametrizedFeature)); }
+        }
+
+        private static void ConfigureBonusSpellChoice(BlueprintParametrizedFeature feature, int index, AnyBlueprintReference[] variants)
+        {
+            feature.IsClassFeature = true;
+            feature.Ranks = 1;
+            feature.HideInUI = false;
+            feature.HideInCharacterSheetAndLevelUp = false;
+            feature.HideNotAvailibleInUI = true;
+            feature.ParameterType = FeatureParameterType.Custom;
+            feature.BlueprintParameterVariants = variants ?? Array.Empty<AnyBlueprintReference>();
+            feature.CustomParameterVariants = feature.BlueprintParameterVariants;
+            feature.HasNoSuchFeature = false;
+            feature.IgnoreParameterFeaturePrerequisites = false;
+            try
+            {
+                typeof(BlueprintParametrizedFeature)
+                    .GetField("m_CachedItems", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
+                    ?.SetValue(feature, null);
+            }
+            catch { }
+
+            try
+            {
+                var iconField = typeof(BlueprintUnitFact).GetField("m_Icon", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                if (_customMerge != null) iconField?.SetValue(feature, iconField?.GetValue(_customMerge));
+            }
+            catch { }
+
+            StripBonusSpellLearnComponents(feature);
+            ApplyBonusSpellLocalizedText(feature, index);
+            try { feature.OnEnable(); } catch { }
+        }
+
+        private static void StripBonusSpellLearnComponents(BlueprintParametrizedFeature feature)
+        {
+            try
+            {
+                var components = feature.ComponentsArray ?? Array.Empty<BlueprintComponent>();
+                feature.ComponentsArray = components
+                    .Where(c => c != null && c.GetType().Name != "LearnGoldenDragonMergeSpellParametrized")
+                    .ToArray();
+            }
+            catch { }
+        }
+
+        private static void ApplyBonusSpellLocalizedText(BlueprintParametrizedFeature bp, int index)
+        {
+            try
+            {
+                string suffixZh = BonusSpellSuffixZh[Math.Max(0, Math.Min(index, BonusSpellSuffixZh.Length - 1))];
+                string suffixEn = BonusSpellSuffixEn[Math.Max(0, Math.Min(index, BonusSpellSuffixEn.Length - 1))];
+                string nameZh = "金龙合书法术 " + suffixZh;
+                string descZh = "选择一个金龙法术书中的非神话法术，将其加入与你的金龙神话法术书合并的职业法术书。";
+                string nameEn = "Golden Dragon Merged Spell " + suffixEn;
+                string descEn = "Choose one non-mythic spell from the Golden Dragon spellbook and add it to the class spellbook merged with your Golden Dragon mythic spellbook.";
+                string nameKeyZh = "MDGA_GD_MergeBonusSpell_Name_zh_" + index;
+                string descKeyZh = "MDGA_GD_MergeBonusSpell_Desc_zh_" + index;
+                string nameKeyEn = "MDGA_GD_MergeBonusSpell_Name_en_" + index;
+                string descKeyEn = "MDGA_GD_MergeBonusSpell_Desc_en_" + index;
+
+                LocalizationInjector.RegisterDynamicKey(nameKeyZh, nameZh);
+                LocalizationInjector.RegisterDynamicKey(descKeyZh, descZh);
+                LocalizationInjector.RegisterDynamicKey(nameKeyEn, nameEn);
+                LocalizationInjector.RegisterDynamicKey(descKeyEn, descEn);
+
+                var fName = typeof(BlueprintUnitFact).GetField("m_DisplayName", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                var fDesc = typeof(BlueprintUnitFact).GetField("m_Description", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                var nameLoc = fName?.GetValue(bp) ?? new LocalizedString();
+                var descLoc = fDesc?.GetValue(bp) ?? new LocalizedString();
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+                bool zh = IsChinese();
+                nameLoc.GetType().GetField("m_Key", flags)?.SetValue(nameLoc, zh ? nameKeyZh : nameKeyEn);
+                nameLoc.GetType().GetField("m_Text", flags)?.SetValue(nameLoc, zh ? nameZh : nameEn);
+                descLoc.GetType().GetField("m_Key", flags)?.SetValue(descLoc, zh ? descKeyZh : descKeyEn);
+                descLoc.GetType().GetField("m_Text", flags)?.SetValue(descLoc, zh ? descZh : descEn);
+                fName?.SetValue(bp, nameLoc);
+                fDesc?.SetValue(bp, descLoc);
+                LocalizationInjector.EnsureInjected();
+            }
+            catch (Exception ex) { Main.Log("[GD Merge][BonusSpells] Apply localized text error: " + ex.Message); }
+        }
+
+        private static void Register(SimpleBlueprint bp, string tag)
+        {
+            try
+            {
+                ResourcesLibrary.BlueprintsCache.AddCachedBlueprint(bp.AssetGuid, bp);
+                if (Main.Settings.VerboseLogging) Main.Log($"{tag} Registered {bp.name} guid={bp.AssetGuid}");
+            }
+            catch (Exception ex)
+            {
+                Main.Log($"{tag} Register exception for {bp?.name ?? "null"}: {ex.Message}");
+            }
+        }
+
+        private static void AddBonusSpellSelections(LevelUpState state, FeatureSelectionState mergeState)
+        {
+            if (state == null || mergeState == null) return;
+            EnsureBonusSpellChoicesFromGame();
+            foreach (var choice in _bonusSpellChoices)
+            {
+                if (choice == null) continue;
+                if (state.Selections.Any(s => s.Selection == choice)) continue;
+                state.AddSelection(null, mergeState.Source, choice, mergeState.Level);
+                if (Main.Settings.VerboseLogging)
+                    Main.Log("[GD Merge][BonusSpells] Added level-up selection: " + choice.name);
+            }
+        }
+
+        internal static bool IsBonusSpellChoice(BlueprintFeature feature)
+        {
+            if (feature == null) return false;
+            return GD_BonusSpellChoiceGuids.Any(g => feature.AssetGuid == g);
+        }
+
+        internal static BlueprintSpellbook TryGetSelectedMergeSpellbook(UnitDescriptor unit, LevelUpState state)
+        {
+            try
+            {
+                if (state != null)
+                {
+                    foreach (var selection in state.Selections)
+                    {
+                        if (selection?.Selection is BlueprintFeatureSelectMythicSpellbook merge && merge.AssetGuid == GD_MergeFeatureGuid)
+                        {
+                            var selected = selection.SelectedItem?.Param?.Blueprint as BlueprintSpellbook;
+                            if (IsValidMergeTarget(selected)) return selected;
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            try
+            {
+                if (unit != null)
+                {
+                    foreach (var feature in unit.Progression.Features.Enumerable)
+                    {
+                        if (feature?.Blueprint == null || feature.Blueprint.AssetGuid != GD_MergeFeatureGuid) continue;
+                        var selected = feature.Param?.Blueprint as BlueprintSpellbook;
+                        if (IsValidMergeTarget(selected)) return selected;
+                    }
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        private static bool IsValidMergeTarget(BlueprintSpellbook spellbook)
+        {
+            if (spellbook == null || spellbook.SpellList == null) return false;
+            if (spellbook.AssetGuid == BlueprintGuid.Parse(GoldDragonSpellbookGuid)) return false;
+            if (_externalGoldDragonSpellbookPresent && spellbook.AssetGuid == BlueprintGuid.Parse(ExternalGoldDragonSpellbookGuid)) return false;
+            return true;
+        }
+
+        internal static int GetBonusSpellLevel(BlueprintAbility spell)
+        {
+            if (spell == null) return -1;
+            try
+            {
+                EnsureBonusSpellChoicesFromGame();
+                var list = _bonusSpellList ?? ResourcesLibrary.TryGetBlueprint<BlueprintSpellList>(GD_BonusSpellListGuid);
+                if (list?.SpellsByLevel == null) return -1;
+                for (int i = 0; i < list.SpellsByLevel.Length; i++)
+                {
+                    var level = list.SpellsByLevel[i];
+                    if (level == null || !level.SpellsFiltered.Any(s => s != null && s.AssetGuid == spell.AssetGuid)) continue;
+                    return level.SpellLevel > 0 ? level.SpellLevel : i;
+                }
+            }
+            catch { }
+            return -1;
+        }
+
+        private static bool IsBonusSpellAlreadySelected(LevelUpState state, FeatureSelectionState currentSelection, BlueprintAbility spell)
+        {
+            if (state == null || spell == null) return false;
+            try
+            {
+                foreach (var selection in state.Selections)
+                {
+                    if (selection == null || selection == currentSelection) continue;
+                    if (!(selection.Selection is BlueprintParametrizedFeature feature) || !IsBonusSpellChoice(feature)) continue;
+                    var selectedSpell = selection.SelectedItem?.Param?.Blueprint as BlueprintAbility;
+                    if (selectedSpell != null && selectedSpell.AssetGuid == spell.AssetGuid) return true;
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        private static bool TryLearnBonusSpell(UnitDescriptor unit, LevelUpState state, BlueprintAbility spell, string context)
+        {
+            if (unit == null || spell == null) return false;
+            try
+            {
+                var targetBookBlueprint = TryGetSelectedMergeSpellbook(unit, state);
+                if (targetBookBlueprint == null)
+                {
+                    if (Main.Settings.VerboseLogging)
+                        Main.Log("[GD Merge][BonusSpells] No merge target while learning " + spell.name + " (" + context + ").");
+                    return false;
+                }
+
+                var targetBook = unit.GetSpellbook(targetBookBlueprint);
+                if (targetBook == null)
+                {
+                    if (Main.Settings.VerboseLogging)
+                        Main.Log("[GD Merge][BonusSpells] Target spellbook instance missing: " + targetBookBlueprint.name + " (" + context + ").");
+                    return false;
+                }
+
+                int level = GetBonusSpellLevel(spell);
+                int maxSelectableLevel = Math.Max(targetBook.MaxSpellLevel, targetBookBlueprint.MaxSpellLevel);
+                if (level <= 0 || level > maxSelectableLevel)
+                {
+                    if (Main.Settings.VerboseLogging)
+                        Main.Log($"[GD Merge][BonusSpells] Skip {spell.name}: level={level}, max={maxSelectableLevel} ({context}).");
+                    return false;
+                }
+
+                if (targetBook.IsKnown(spell))
+                {
+                    if (Main.Settings.VerboseLogging)
+                        Main.Log("[GD Merge][BonusSpells] Already known: " + spell.name + " in " + targetBookBlueprint.name + " (" + context + ").");
+                    return true;
+                }
+
+                targetBook.AddKnown(level, spell, true);
+                Main.Log($"[GD Merge][BonusSpells] Learned {spell.name} as level {level} in {targetBookBlueprint.name} ({context}).");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Main.Log("[GD Merge][BonusSpells] Learn bonus spell error: " + ex);
+                return false;
+            }
         }
 
         private static bool _locRegistered;
@@ -456,6 +837,71 @@ namespace MDGA.GoldDragonMythic
             }
         }
 
+        [HarmonyPatch(typeof(SelectFeature), nameof(SelectFeature.Apply))]
+        private static class AddBonusSpellSelectionsAfterMergePatch
+        {
+            [HarmonyPostfix]
+            private static void Postfix(SelectFeature __instance, LevelUpState state, UnitDescriptor unit)
+            {
+                if (!Main.Enabled || !Main.Settings.EnableGoldenDragonMerge) return;
+                try
+                {
+                    var item = __instance?.Item;
+                    if (item?.Feature == null) return;
+
+                    if (item.Feature.AssetGuid == GD_MergeFeatureGuid)
+                    {
+                        var chosenBook = item.Param?.Blueprint as BlueprintSpellbook;
+                        if (!IsValidMergeTarget(chosenBook)) return;
+                        var mergeState = state?.Selections?.FirstOrDefault(s => s.Selection == __instance.Selection && s.Index == __instance.SelectionIndex);
+                        if (mergeState == null) return;
+                        AddBonusSpellSelections(state, mergeState);
+                        return;
+                    }
+
+                    if (IsBonusSpellChoice(item.Feature))
+                    {
+                        TryLearnBonusSpell(unit, state, item.Param?.Blueprint as BlueprintAbility, "SelectFeature.Apply");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Main.Log("[GD Merge][BonusSpells] SelectFeature.Apply postfix error: " + ex.Message);
+                }
+            }
+        }
+
+        [HarmonyPatch(typeof(BlueprintParametrizedFeature), nameof(BlueprintParametrizedFeature.CanSelect))]
+        private static class BonusSpellCanSelectPatch
+        {
+            [HarmonyPostfix]
+            private static void Postfix(BlueprintParametrizedFeature __instance, UnitDescriptor unit, LevelUpState state, FeatureSelectionState selectionState, IFeatureSelectionItem item, ref bool __result)
+            {
+                if (!__result) return;
+                if (__instance == null || !IsBonusSpellChoice(__instance)) return;
+                try
+                {
+                    var spell = item?.Param?.Blueprint as BlueprintAbility;
+                    if (spell == null) { __result = false; return; }
+                    var targetBookBlueprint = TryGetSelectedMergeSpellbook(unit, state);
+                    if (targetBookBlueprint == null) { __result = false; return; }
+                    var targetBook = unit?.GetSpellbook(targetBookBlueprint);
+                    if (targetBook == null) { __result = false; return; }
+                    int level = GetBonusSpellLevel(spell);
+                    int maxSelectableLevel = Math.Max(targetBook.MaxSpellLevel, targetBookBlueprint.MaxSpellLevel);
+                    if (level <= 0 || level > maxSelectableLevel) { __result = false; return; }
+                    if (targetBook.IsKnown(spell)) { __result = false; return; }
+                    if (IsBonusSpellAlreadySelected(state, selectionState, spell)) { __result = false; return; }
+                }
+                catch (Exception ex)
+                {
+                    if (Main.Settings.VerboseLogging)
+                        Main.Log("[GD Merge][BonusSpells] CanSelect error: " + ex.Message);
+                    __result = false;
+                }
+            }
+        }
+
         // 文本覆盖补丁（保持不变）
         [HarmonyPatch]
         private static class TextGetterPatch
@@ -547,8 +993,27 @@ namespace MDGA.GoldDragonMythic
                 var f = t.GetField("m_Components", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
                       ?? t.GetField("Components", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
                 var arr = (f?.GetValue(bp) as BlueprintComponent[]) ?? Array.Empty<BlueprintComponent>();
+                EnsureComponentName(comp, arr);
                 var newArr = arr.Concat(new[] { comp }).ToArray();
                 f?.SetValue(bp, newArr);
+            }
+            catch { }
+        }
+
+        private static void EnsureComponentName(BlueprintComponent comp, IEnumerable<BlueprintComponent> existing)
+        {
+            if (comp == null) return;
+            try
+            {
+                var used = new HashSet<string>((existing ?? Array.Empty<BlueprintComponent>())
+                    .Where(c => c != null && !string.IsNullOrEmpty(c.name))
+                    .Select(c => c.name));
+                string baseName = string.IsNullOrEmpty(comp.name) ? comp.GetType().Name : comp.name;
+                string name = baseName;
+                int suffix = 1;
+                while (used.Contains(name))
+                    name = baseName + "$" + suffix++;
+                comp.name = name;
             }
             catch { }
         }

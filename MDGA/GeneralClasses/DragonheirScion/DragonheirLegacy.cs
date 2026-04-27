@@ -2,13 +2,19 @@ using System;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
+using Kingmaker;
 using Kingmaker.Blueprints;
 using Kingmaker.Blueprints.Classes;
 using Kingmaker.Blueprints.Classes.Selection;
+using Kingmaker.EntitySystem.Entities;
+using Kingmaker.EntitySystem.Persistence;
 using Kingmaker.Localization;
 using Kingmaker.Blueprints.Facts;
 using Kingmaker.Blueprints.JsonSystem;
-using Kingmaker.UnitLogic.FactLogic;
+using Kingmaker.Designers.Mechanics.Facts;
+using Kingmaker.UnitLogic;
+using Kingmaker.UnitLogic.Class.LevelUp;
+using Kingmaker.UnitLogic.Class.LevelUp.Actions;
 using MDGA.Loc;
 
 namespace MDGA.GeneralClasses.DragonheirScion
@@ -19,8 +25,11 @@ namespace MDGA.GeneralClasses.DragonheirScion
         internal static readonly BlueprintGuid FighterClassGuid = BlueprintGuid.Parse("48ac8db94d5de7645906c7d0ad3bcfbd");
         internal static readonly BlueprintGuid FighterFeatSelectionGuid = BlueprintGuid.Parse("41c8486641f7d6d4283ca9dae4147a9f");
         internal static readonly BlueprintGuid DragonheirScionArchetypeGuid = BlueprintGuid.Parse("8dff97413c63c1147be8a5ca229abefc");
-        // 新建的说明用特性：龙族传承
+        // 显示用血脉特性：龙族传承
         internal static readonly BlueprintGuid DragonLegacyFeatureGuid = BlueprintGuid.Parse("9f2f8c4a2b0f4a1d9d4b6f6c12345678");
+        // 旧版隐藏进度仅保留为兼容/清理标记；新版不再把它挂到角色身上，避免存档序列化风险。
+        internal static readonly BlueprintGuid DragonLegacyProgressionGuid = BlueprintGuid.Parse("9f2f8c4a2b0f4a1d9d4b6f6c12345679");
+        internal static readonly BlueprintGuid DragonLegacyFeatSelectionGuid = BlueprintGuid.Parse("9f2f8c4a2b0f4a1d9d4b6f6c1234567a");
 
         // 14 条龙脉血承的 progression GUID
         internal static readonly BlueprintGuid DragonheirProgressionFireGuid         = BlueprintGuid.Parse("8e30b4dab152d4549bf9c0dbf901aadf");
@@ -62,111 +71,198 @@ namespace MDGA.GeneralClasses.DragonheirScion
             // 蓝图已就绪；在此处对龙之贵胄原型的 AddFeatures 做一次性注入。
             try
             {
-                InjectFighterFeatIntoDragonheir();
-                EnsureDragonLegacyFeatureOnBloodlines();
+                EnsureDragonLegacyBloodlineFeature();
             }
             catch (Exception ex)
             {
-                Main.Log("[DragonheirLegacy] InjectFighterFeatIntoDragonheir error: " + ex);
+                Main.Log("[DragonheirLegacy] EnsureDragonLegacyBloodlineFeature error: " + ex);
             }
 
             _completed = true;
         }
 
         /// <summary>
-        /// 在 DragonheirScion 原型的 AddFeatures 里，为 1-20 级每级追加一次 FighterFeatSelection，
-        /// 从而让该原型的战士在对应等级多获得一次战士奖励专长选择。
-        /// 不新建任何蓝图，只修改现有 LevelEntry 数组，全部通过反射访问内部字段，避免编译期错误。
+        /// 将旧的“直接塞 1-20 级战斗专长槽”改成：
+        /// 血脉 progression 只显示一个可见特性；真正的战斗专长选择在升级流程中临时加入 LevelUpState。
         /// </summary>
-        private static void InjectFighterFeatIntoDragonheir()
+        private static void EnsureDragonLegacyBloodlineFeature()
         {
             var fighterSel = ResourcesLibrary.TryGetBlueprint<BlueprintFeatureSelection>(FighterFeatSelectionGuid);
             var archetype = ResourcesLibrary.TryGetBlueprint<BlueprintArchetype>(DragonheirScionArchetypeGuid);
             if (fighterSel == null || archetype == null)
             {
-                Main.Log("[DragonheirLegacy] InjectFighterFeatIntoDragonheir: required blueprints missing.");
+                Main.Log("[DragonheirLegacy] EnsureDragonLegacyBloodlineFeature: required blueprints missing.");
                 return;
             }
 
-            var flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+            RemoveDirectFighterFeatFromDragonheir(archetype);
 
-            // 直接通过公开属性 AddFeatures 访问/写回 LevelEntry 数组。
-            var rawAdd = archetype.AddFeatures ?? Array.Empty<LevelEntry>();
-            var addList = rawAdd.ToList();
+            EnsureDragonLegacyFeatSelection(fighterSel);
+            EnsureDragonLegacyProgression(fighterSel);
+            var legacy = EnsureDragonLegacyFeature(fighterSel);
+            EnsureDragonLegacyFeatureOnBloodlines(legacy);
 
-            // LevelEntry 上的 m_Features 字段，通过反射访问。
-            var fiFeatures = typeof(LevelEntry).GetField("m_Features", flags);
-            if (fiFeatures == null)
-            {
-                Main.Log("[DragonheirLegacy] InjectFighterFeatIntoDragonheir: LevelEntry.m_Features field not found.");
-                return;
-            }
-
-            // 1-20 级逐级处理。
-            for (int lvl = 1; lvl <= 20; lvl++)
-            {
-                var entry = addList.FirstOrDefault(le => le.Level == lvl);
-                if (entry == null)
-                {
-                    entry = new LevelEntry { Level = lvl };
-                    fiFeatures.SetValue(entry, null); // 先置空，下面统一初始化
-                    addList.Add(entry);
-                }
-
-                var rawFeat = fiFeatures.GetValue(entry);
-
-                // 记录原始类型，用于回写时保持一致
-                bool wasArray = rawFeat is BlueprintFeatureBaseReference[];
-
-                var list = rawFeat switch
-                {
-                    BlueprintFeatureBaseReference[] arr => arr.ToList(),
-                    System.Collections.Generic.List<BlueprintFeatureBaseReference> l => l,
-                    _ => new System.Collections.Generic.List<BlueprintFeatureBaseReference>()
-                };
-
-                // 如果这一等级已经包含 FighterFeatSelection，就不重复添加。
-                if (list.Any(fr => fr != null && fr.Guid == FighterFeatSelectionGuid))
-                {
-                    continue;
-                }
-
-                list.Add(fighterSel.ToReference<BlueprintFeatureBaseReference>());
-
-                object toStore = wasArray ? (object)list.ToArray() : list;
-                fiFeatures.SetValue(entry, toStore);
-            }
-
-            // 按等级排序后写回原型属性。
-            var finalArray = addList.OrderBy(le => le.Level).ToArray();
-            archetype.AddFeatures = finalArray;
-
-            Main.Log("[DragonheirLegacy] FighterFeatSelection injected into Dragonheir archetype levels 1-20.");
+            Main.Log("[DragonheirLegacy] DragonLegacy bloodline feature now queues save-stable per-level combat feat selections.");
 
             // 如启用详细日志，可输出最终布局，方便调试。
             DumpArchetypeFeatureLayout(archetype);
         }
 
         /// <summary>
-        /// 确保创建一个纯说明用的“龙族传承”特性，并将其添加到 10 条龙脉血承 progression 的 1 级。
+        /// 清理早期实现向 DragonheirScion 原型 AddFeatures 直接添加的 FighterFeatSelection。
+        /// 这里只碰原型 AddFeatures，不影响战士职业进度本身的普通奖励专长。
         /// </summary>
-        private static void EnsureDragonLegacyFeatureOnBloodlines()
+        private static void RemoveDirectFighterFeatFromDragonheir(BlueprintArchetype archetype)
         {
             try
             {
                 var flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+                var fiFeatures = typeof(LevelEntry).GetField("m_Features", flags);
+                if (fiFeatures == null) return;
 
-                // 1. 获取说明用特性；如果不存在，就直接跳过说明注入逻辑（不影响功能）。
-                // 1. 获取说明用特性；如果不存在就创建并注册。
-                var legacy = ResourcesLibrary.TryGetBlueprint<BlueprintFeature>(DragonLegacyFeatureGuid);
-                if (legacy == null)
+                var changed = false;
+                var entries = (archetype.AddFeatures ?? Array.Empty<LevelEntry>()).ToList();
+                foreach (var entry in entries.ToList())
                 {
-                    legacy = CreateDragonLegacyFeature();
-                    Register(legacy);
-                    Main.Log("[DragonheirLegacy] DragonLegacyFeature created and registered.");
+                    var raw = fiFeatures.GetValue(entry);
+                    bool wasArray = raw is BlueprintFeatureBaseReference[];
+                    var list = raw switch
+                    {
+                        BlueprintFeatureBaseReference[] arr => arr.ToList(),
+                        System.Collections.Generic.List<BlueprintFeatureBaseReference> l => l.ToList(),
+                        _ => new System.Collections.Generic.List<BlueprintFeatureBaseReference>()
+                    };
+
+                    int oldCount = list.Count;
+                    list = list.Where(r => r == null || r.Guid != FighterFeatSelectionGuid).ToList();
+                    if (list.Count == oldCount) continue;
+
+                    changed = true;
+                    if (list.Count == 0)
+                    {
+                        entries.Remove(entry);
+                    }
+                    else
+                    {
+                        object toStore = wasArray ? (object)list.ToArray() : list;
+                        fiFeatures.SetValue(entry, toStore);
+                    }
                 }
 
-                // 2. 把这个特性挂到 10 条 progression 的 1 级
+                if (changed)
+                {
+                    archetype.AddFeatures = entries.OrderBy(le => le.Level).ToArray();
+                    Main.Log("[DragonheirLegacy] Removed direct FighterFeatSelection entries from Dragonheir archetype AddFeatures.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Main.Log("[DragonheirLegacy] RemoveDirectFighterFeatFromDragonheir error: " + ex.Message);
+            }
+        }
+
+        private static BlueprintFeatureSelection EnsureDragonLegacyFeatSelection(BlueprintFeatureSelection fighterSel)
+        {
+            var selection = ResourcesLibrary.TryGetBlueprint<BlueprintFeatureSelection>(DragonLegacyFeatSelectionGuid);
+            if (selection == null)
+            {
+                selection = CreateBlueprint<BlueprintFeatureSelection>("MDGA_DragonLegacyFeatSelection", DragonLegacyFeatSelectionGuid);
+                Register(selection);
+                Main.Log("[DragonheirLegacy] Hidden DragonLegacy feat selection created and registered.");
+            }
+
+            selection.name = "MDGA_DragonLegacyFeatSelection";
+            selection.IsClassFeature = true;
+            selection.Ranks = 1;
+            selection.HideInUI = false;
+            selection.HideInCharacterSheetAndLevelUp = false;
+            selection.HideNotAvailibleInUI = fighterSel.HideNotAvailibleInUI;
+            selection.IgnorePrerequisites = fighterSel.IgnorePrerequisites;
+            selection.ExceptWhiteListed = fighterSel.ExceptWhiteListed;
+            selection.Obligatory = fighterSel.Obligatory;
+            selection.Mode = fighterSel.Mode;
+            selection.Group = fighterSel.Group;
+            selection.Group2 = fighterSel.Group2;
+            selection.ShowThisSelection = fighterSel.ShowThisSelection;
+            CopySelectionOptions(fighterSel, selection);
+            CopyIcon(fighterSel, selection);
+            SetLocalizedStrings(
+                selection,
+                "MDGA_DragonLegacyFeatSelection_Name",
+                "龙族传承专长",
+                "Dragon Legacy Feat",
+                "MDGA_DragonLegacyFeatSelection_Desc",
+                "选择一项战斗专长。龙之贵胄每一级都会获得一次此选择。",
+                "Select one combat feat. A Dragonheir Scion gains this choice at every level.");
+            return selection;
+        }
+
+        private static BlueprintProgression EnsureDragonLegacyProgression(BlueprintFeatureSelection iconSource)
+        {
+            var progression = ResourcesLibrary.TryGetBlueprint<BlueprintProgression>(DragonLegacyProgressionGuid);
+            if (progression == null)
+            {
+                progression = CreateBlueprint<BlueprintProgression>("MDGA_DragonLegacyProgression", DragonLegacyProgressionGuid);
+                Register(progression);
+                Main.Log("[DragonheirLegacy] Deprecated hidden DragonLegacy progression marker created and registered.");
+            }
+
+            progression.name = "MDGA_DragonLegacyProgression";
+            progression.IsClassFeature = true;
+            progression.Ranks = 1;
+            progression.HideInUI = true;
+            progression.HideInCharacterSheetAndLevelUp = true;
+            progression.GiveFeaturesForPreviousLevels = false;
+            CopyIcon(iconSource, progression);
+            SetProgressionArchetype(progression, null);
+            progression.LevelEntries = Array.Empty<LevelEntry>();
+            SetLocalizedStrings(
+                progression,
+                "MDGA_DragonLegacyProgression_Name",
+                "龙族传承奖励",
+                "Dragon Legacy Rewards",
+                "MDGA_DragonLegacyProgression_Desc",
+                "兼容标记：旧版隐藏进度已停用，奖励专长现在由升级选择流程发放。",
+                "Compatibility marker: the deprecated hidden progression is inactive; feat choices are now granted by the level-up flow.");
+            return progression;
+        }
+
+        private static BlueprintFeature EnsureDragonLegacyFeature(BlueprintFeature iconSource)
+        {
+            var legacy = ResourcesLibrary.TryGetBlueprint<BlueprintFeature>(DragonLegacyFeatureGuid);
+            if (legacy == null)
+            {
+                legacy = CreateBlueprint<BlueprintFeature>("MDGA_DragonLegacy", DragonLegacyFeatureGuid);
+                Register(legacy);
+                Main.Log("[DragonheirLegacy] DragonLegacy feature created and registered.");
+            }
+
+            legacy.name = "MDGA_DragonLegacy";
+            legacy.IsClassFeature = true;
+            legacy.Ranks = 1;
+            legacy.HideInUI = false;
+            legacy.HideInCharacterSheetAndLevelUp = false;
+            CopyIcon(iconSource, legacy);
+            SetLocalizedStrings(
+                legacy,
+                "MDGA_DragonLegacy_Name",
+                "龙族传承",
+                "Dragon Legacy",
+                "MDGA_DragonLegacy_Desc",
+                "龙血为战士们带来了新的力量：每一级龙之贵胄都会额外获得一次战斗专长。",
+                "Dragon blood empowers warriors: each Dragonheir Scion level grants one extra combat feat.");
+            RemoveDeprecatedAddFeatureOnApply(legacy);
+            return legacy;
+        }
+
+        /// <summary>
+        /// 确保把可见的“龙族传承”血脉特性添加到所有龙裔血承 progression 的 1 级。
+        /// </summary>
+        private static void EnsureDragonLegacyFeatureOnBloodlines(BlueprintFeature legacy)
+        {
+            try
+            {
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
                 var allProgressions = new[]
                 {
                     DragonheirProgressionFireGuid,
@@ -192,7 +288,6 @@ namespace MDGA.GeneralClasses.DragonheirScion
 
                     var entries = prog.LevelEntries ?? Array.Empty<LevelEntry>();
                     var entryList = entries.ToList();
-
                     var entry = entryList.FirstOrDefault(le => le.Level == 1);
                     if (entry == null)
                     {
@@ -208,7 +303,7 @@ namespace MDGA.GeneralClasses.DragonheirScion
                     var featureList = raw switch
                     {
                         BlueprintFeatureBaseReference[] arr => arr.ToList(),
-                        System.Collections.Generic.List<BlueprintFeatureBaseReference> l => l,
+                        System.Collections.Generic.List<BlueprintFeatureBaseReference> l => l.ToList(),
                         _ => new System.Collections.Generic.List<BlueprintFeatureBaseReference>()
                     };
 
@@ -230,56 +325,115 @@ namespace MDGA.GeneralClasses.DragonheirScion
             }
         }
 
-        /// <summary>
-        /// 动态创建“龙族传承”说明特性，使用与 DragonBloodBoiling/DragonGodFavor 相同的本地化注入套路。
-        /// </summary>
-        private static BlueprintFeature CreateDragonLegacyFeature()
+        private static T CreateBlueprint<T>(string name, BlueprintGuid guid) where T : SimpleBlueprint
         {
-            BlueprintFeature bp;
-            try { bp = (BlueprintFeature)Activator.CreateInstance(typeof(BlueprintFeature)); }
-            catch { bp = (BlueprintFeature)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(BlueprintFeature)); }
+            T bp;
+            try { bp = (T)Activator.CreateInstance(typeof(T)); }
+            catch { bp = (T)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(T)); }
+            bp.name = name;
+            AssignGuid(bp, guid);
+            return bp;
+        }
 
-            bp.name = "MDGA_DragonLegacy";
-            AssignGuid(bp, DragonLegacyFeatureGuid);
-            bp.IsClassFeature = true;
-            bp.Ranks = 1;
-
+        private static void SetProgressionArchetype(BlueprintProgression progression, BlueprintArchetype archetype)
+        {
             try
             {
-                const string nameZh = "龙族传承";
-                const string descZh = "龙血为战士们带来了新的力量：每一级龙之贵胄都会额外获得一次战斗专长。";
-                const string nameEn = "Dragon Legacy";
-                const string descEn = "Dragon blood empowers warriors: each Dragonheir Scion level grants one extra combat feat.";
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+                typeof(BlueprintProgression).GetField("m_Classes", flags)
+                    ?.SetValue(progression, Array.Empty<BlueprintProgression.ClassWithLevel>());
+                typeof(BlueprintProgression).GetField("m_Archetypes", flags)
+                    ?.SetValue(progression, archetype == null
+                        ? Array.Empty<BlueprintProgression.ArchetypeWithLevel>()
+                        : new[]
+                        {
+                            new BlueprintProgression.ArchetypeWithLevel
+                            {
+                                m_Archetype = archetype.ToReference<BlueprintArchetypeReference>(),
+                                AdditionalLevel = 0
+                            }
+                        });
+                typeof(BlueprintProgression).GetField("m_AlternateProgressionClasses", flags)
+                    ?.SetValue(progression, Array.Empty<BlueprintProgression.ClassWithLevel>());
+            }
+            catch (Exception ex)
+            {
+                Main.Log("[DragonheirLegacy] SetProgressionArchetype error: " + ex.Message);
+            }
+        }
 
-                // 注册动态本地化 key，方便其他系统引用/覆盖
-                LocalizationInjector.RegisterDynamicKey("MDGA_DragonLegacy_Name_zh", nameZh);
-                LocalizationInjector.RegisterDynamicKey("MDGA_DragonLegacy_Desc_zh", descZh);
-                LocalizationInjector.RegisterDynamicKey("MDGA_DragonLegacy_Name_en", nameEn);
-                LocalizationInjector.RegisterDynamicKey("MDGA_DragonLegacy_Desc_en", descEn);
+        private static void RemoveDeprecatedAddFeatureOnApply(BlueprintFeature owner)
+        {
+            try
+            {
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+                var f = typeof(BlueprintScriptableObject).GetField("m_Components", flags)
+                    ?? typeof(BlueprintScriptableObject).GetField("Components", flags);
+                if (f == null) return;
 
-                var fName = typeof(BlueprintUnitFact).GetField("m_DisplayName", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-                var fDesc = typeof(BlueprintUnitFact).GetField("m_Description", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                var arr = (f.GetValue(owner) as BlueprintComponent[]) ?? Array.Empty<BlueprintComponent>();
+                var filtered = arr
+                    .Where(c => !(c is AddFeatureOnApply add && add.Feature != null && add.Feature.AssetGuid == DragonLegacyProgressionGuid))
+                    .ToArray();
+                if (filtered.Length == arr.Length) return;
+
+                f.SetValue(owner, filtered);
+                Main.Log("[DragonheirLegacy] Removed deprecated AddFeatureOnApply from DragonLegacy feature.");
+            }
+            catch (Exception ex)
+            {
+                Main.Log("[DragonheirLegacy] RemoveDeprecatedAddFeatureOnApply error: " + ex.Message);
+            }
+        }
+
+        private static void SetLocalizedStrings(BlueprintUnitFact bp, string nameKeyBase, string nameZh, string nameEn, string descKeyBase, string descZh, string descEn)
+        {
+            try
+            {
+                string nameKeyZh = nameKeyBase + "_zh";
+                string nameKeyEn = nameKeyBase + "_en";
+                string descKeyZh = descKeyBase + "_zh";
+                string descKeyEn = descKeyBase + "_en";
+
+                LocalizationInjector.RegisterDynamicKey(nameKeyZh, nameZh);
+                LocalizationInjector.RegisterDynamicKey(nameKeyEn, nameEn);
+                LocalizationInjector.RegisterDynamicKey(descKeyZh, descZh);
+                LocalizationInjector.RegisterDynamicKey(descKeyEn, descEn);
+
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+                var fName = typeof(BlueprintUnitFact).GetField("m_DisplayName", flags);
+                var fDesc = typeof(BlueprintUnitFact).GetField("m_Description", flags);
+                if (fName == null || fDesc == null) return;
+
                 var nameLoc = Activator.CreateInstance(fName.FieldType);
                 var descLoc = Activator.CreateInstance(fDesc.FieldType);
                 var locFlags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
-
                 bool zh = IsChinese();
-                nameLoc.GetType().GetField("m_Key", locFlags)?.SetValue(nameLoc, zh ? "MDGA_DragonLegacy_Name_zh" : "MDGA_DragonLegacy_Name_en");
+
+                nameLoc.GetType().GetField("m_Key", locFlags)?.SetValue(nameLoc, zh ? nameKeyZh : nameKeyEn);
                 nameLoc.GetType().GetField("m_Text", locFlags)?.SetValue(nameLoc, zh ? nameZh : nameEn);
-                descLoc.GetType().GetField("m_Key", locFlags)?.SetValue(descLoc, zh ? "MDGA_DragonLegacy_Desc_zh" : "MDGA_DragonLegacy_Desc_en");
+                descLoc.GetType().GetField("m_Key", locFlags)?.SetValue(descLoc, zh ? descKeyZh : descKeyEn);
                 descLoc.GetType().GetField("m_Text", locFlags)?.SetValue(descLoc, zh ? descZh : descEn);
 
                 fName.SetValue(bp, nameLoc);
                 fDesc.SetValue(bp, descLoc);
-
                 LocalizationInjector.EnsureInjected();
             }
             catch
             {
                 // 本地化失败不影响功能
             }
+        }
 
-            return bp;
+        private static void CopyIcon(BlueprintUnitFact src, BlueprintUnitFact dst)
+        {
+            try
+            {
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+                var iconField = typeof(BlueprintUnitFact).GetField("m_Icon", flags);
+                iconField?.SetValue(dst, iconField.GetValue(src));
+            }
+            catch { }
         }
 
         private static void CopySelectionOptions(BlueprintFeatureSelection src, BlueprintFeatureSelection dst)
@@ -316,27 +470,6 @@ namespace MDGA.GeneralClasses.DragonheirScion
                 f?.SetValue(bp, guid);
             }
             catch { }
-        }
-
-        private static void AddComponent(BlueprintScriptableObject bp, BlueprintComponent comp)
-        {
-            try
-            {
-                var f = typeof(BlueprintScriptableObject).GetField("m_Components", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public) ?? typeof(BlueprintScriptableObject).GetField("Components", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-                var arr = (f?.GetValue(bp) as BlueprintComponent[]) ?? Array.Empty<BlueprintComponent>();
-                f?.SetValue(bp, arr.Concat(new[] { comp }).ToArray());
-            }
-            catch { }
-        }
-
-        private static void SetFieldOrProp(object obj, string name, object value)
-        {
-            if (obj == null) return;
-            var flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
-            var f = obj.GetType().GetField(name, flags);
-            if (f != null) { try { f.SetValue(obj, value); return; } catch { } }
-            var p = obj.GetType().GetProperty(name, flags);
-            if (p != null && p.CanWrite) { try { p.SetValue(obj, value); return; } catch { } }
         }
 
         private static void DumpArchetypeFeatureLayout(BlueprintArchetype archetype)
@@ -390,6 +523,112 @@ namespace MDGA.GeneralClasses.DragonheirScion
             }
             catch { }
             return false;
+        }
+
+        internal static void CleanupKnownRuntimeState()
+        {
+            try
+            {
+                var player = Game.Instance?.Player;
+                if (player == null) return;
+
+                foreach (var ch in player.AllCharacters ?? Enumerable.Empty<UnitEntityData>())
+                {
+                    var descriptor = ch?.Descriptor;
+                    if (descriptor != null)
+                        RemoveDeprecatedHiddenProgression(descriptor);
+                }
+            }
+            catch (Exception ex)
+            {
+                Main.Log("[DragonheirLegacy] CleanupKnownRuntimeState error: " + ex.Message);
+            }
+        }
+
+        internal static void EnsureLevelUpSelection(UnitDescriptor unit, LevelUpState state)
+        {
+            try
+            {
+                if (!Main.Enabled || unit == null || state == null) return;
+
+                RemoveDeprecatedHiddenProgression(unit);
+
+                var selectedClass = state.SelectedClass;
+                if (selectedClass == null || selectedClass.AssetGuid != FighterClassGuid) return;
+                if (state.NextClassLevel < 1 || state.NextClassLevel > 20) return;
+
+                var classData = unit.Progression.GetClassData(selectedClass);
+                if (classData == null || !classData.Archetypes.Any(a => a != null && a.AssetGuid == DragonheirScionArchetypeGuid))
+                    return;
+
+                var selection = ResourcesLibrary.TryGetBlueprint<BlueprintFeatureSelection>(DragonLegacyFeatSelectionGuid);
+                if (selection == null) return;
+
+                if (state.Selections.Any(s => s != null && s.Selection == selection && s.Level == state.NextClassLevel))
+                    return;
+
+                state.AddSelection(null, selectedClass, selection, state.NextClassLevel);
+                if (Main.Settings != null && Main.Settings.VerboseLogging)
+                    Main.Log("[DragonheirLegacy] Queued DragonLegacy feat selection for Dragonheir level " + state.NextClassLevel + ".");
+            }
+            catch (Exception ex)
+            {
+                Main.Log("[DragonheirLegacy] EnsureLevelUpSelection error: " + ex.Message);
+            }
+        }
+
+        private static void RemoveDeprecatedHiddenProgression(UnitDescriptor unit)
+        {
+            try
+            {
+                if (unit == null) return;
+
+                var hiddenProgression = ResourcesLibrary.TryGetBlueprint<BlueprintProgression>(DragonLegacyProgressionGuid);
+                if (hiddenProgression == null) return;
+
+                var progressionData = unit.Progression;
+                if (progressionData == null) return;
+
+                var fact = progressionData.Features?.GetFact(hiddenProgression);
+                if (fact != null)
+                {
+                    progressionData.Features.RemoveFact(fact);
+                    if (Main.Settings != null && Main.Settings.VerboseLogging)
+                        Main.Log("[DragonheirLegacy] Removed deprecated hidden DragonLegacy progression fact from unit.");
+                }
+
+                var field = typeof(UnitProgressionData).GetField("m_Progressions", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                if (field?.GetValue(progressionData) is System.Collections.IDictionary dict && dict.Contains(hiddenProgression))
+                {
+                    dict.Remove(hiddenProgression);
+                    if (Main.Settings != null && Main.Settings.VerboseLogging)
+                        Main.Log("[DragonheirLegacy] Removed deprecated hidden DragonLegacy progression data from unit.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Main.Log("[DragonheirLegacy] RemoveDeprecatedHiddenProgression error: " + ex.Message);
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(ApplyClassMechanics), nameof(ApplyClassMechanics.Apply))]
+    internal static class DragonheirLegacyLevelUpSelectionPatch
+    {
+        [HarmonyPostfix]
+        private static void Postfix(LevelUpState state, UnitDescriptor unit)
+        {
+            DragonheirLegacy.EnsureLevelUpSelection(unit, state);
+        }
+    }
+
+    [HarmonyPatch(typeof(SaveManager), nameof(SaveManager.SaveRoutine))]
+    internal static class DragonheirLegacyBeforeSaveCleanupPatch
+    {
+        [HarmonyPrefix]
+        private static void Prefix()
+        {
+            DragonheirLegacy.CleanupKnownRuntimeState();
         }
     }
 }
