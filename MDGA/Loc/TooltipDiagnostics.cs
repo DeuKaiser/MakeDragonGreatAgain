@@ -10,7 +10,7 @@ using UnityEngine;
 
 namespace MDGA.Loc
 {
-    // Tooltip Õï¶Ï²¹¶¡£¨½µ¼¶°æ£©£º½öÔÚ TooltipHelper ºÍ TooltipEncyclopediaTemplate ¹¹Ôì´¦¼ÇÂ¼¹Ø¼üĞÅÏ¢£¬±ÜÃâÓ°Ïì´æµµÓëÁ÷³Ì¡£
+    // Tooltip è¯Šæ–­è¡¥ä¸ï¼ˆé™çº§ç‰ˆï¼‰ï¼šä»…åœ¨ TooltipHelper å’Œ TooltipEncyclopediaTemplate æ„é€ å¤„è®°å½•å…³é”®ä¿¡æ¯ï¼Œé¿å…å½±å“å­˜æ¡£ä¸æµç¨‹ã€‚
     internal static class TooltipDiagnostics
     {
         private static bool Verbose => Main.Enabled && Main.Settings != null && Main.Settings.VerboseLogging;
@@ -71,8 +71,9 @@ namespace MDGA.Loc
             catch { }
         }
 
-        // ½ö¼ÇÂ¼ TooltipHelper.ShowLinkTooltip ÖØÔØµ÷ÓÃ
-        [HarmonyPatch]
+        // ä»…è®°å½• TooltipHelper.ShowLinkTooltip é‡è½½è°ƒç”¨
+        // Disabled: this diagnostic used Harmony's __args pseudo-parameter across
+        // several overloads. On the current game build that aborts the whole PatchAll.
         private static class Patch_All_ShowLinkTooltip
         {
             static IEnumerable<MethodBase> TargetMethods()
@@ -111,8 +112,8 @@ namespace MDGA.Loc
             }
         }
 
-        // ½ö¼ÇÂ¼ TooltipEncyclopediaTemplate µÄ¹¹ÔìÈë²Î
-        [HarmonyPatch]
+        // ä»…è®°å½• TooltipEncyclopediaTemplate çš„æ„é€ å…¥å‚
+        // Disabled for the same compatibility reason as the diagnostic above.
         private static class Patch_TooltipEncyclopediaTemplate_Ctors
         {
             static IEnumerable<MethodBase> TargetMethods()

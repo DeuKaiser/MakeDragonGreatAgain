@@ -12,10 +12,12 @@ using Kingmaker.EntitySystem.Stats;
 using Kingmaker.Enums;
 using Kingmaker.Localization;
 using Kingmaker.RuleSystem.Rules;
+using Kingmaker.UI.MVVM._VM.ServiceWindows.Spellbook.Metamagic;
 using Kingmaker.UnitLogic;
 using Kingmaker.UnitLogic.Abilities;
 using Kingmaker.UnitLogic.FactLogic;
 using MDGA.Loc;
+using UniRx;
 
 namespace MDGA.Backgrounds
 {
@@ -23,6 +25,7 @@ namespace MDGA.Backgrounds
     internal static class DragonSpeakerBackground
     {
         internal static readonly BlueprintGuid FeatureGuid = BlueprintGuid.Parse("31c8f3616d4b4d40a94f42654a7e7ef1");
+        internal const int QuickenCostReduction = 3;
 
         private static readonly BlueprintGuid ScholarSelectionGuid = BlueprintGuid.Parse("273fab44409035f42a7e2af0858a463d");
         private static bool _done;
@@ -82,8 +85,6 @@ namespace MDGA.Backgrounds
             {
                 NewComponent<AddClassSkill>("UseMagicDeviceClassSkill", c => c.Skill = StatType.SkillUseMagicDevice),
                 NewComponent<AddClassSkill>("KnowledgeArcanaClassSkill", c => c.Skill = StatType.SkillKnowledgeArcana),
-                NewComponent<AddBackgroundClassSkill>("UseMagicDeviceBackgroundSkill", c => c.Skill = StatType.SkillUseMagicDevice),
-                NewComponent<AddBackgroundClassSkill>("KnowledgeArcanaBackgroundSkill", c => c.Skill = StatType.SkillKnowledgeArcana),
                 NewComponent<AddCasterLevel>("CasterLevelTraitBonus", c =>
                 {
                     c.Bonus = 2;
@@ -152,7 +153,7 @@ namespace MDGA.Backgrounds
         private static void ApplyLocalization(BlueprintFeature feature)
         {
             const string nameZh = "龙语者";
-            const string descZh = "龙语者使用龙语施法，超魔瞬发占用的施法者等级比正常状况降低3级，此外，龙语者的施法者等级获得+2特性加值。";
+            const string descZh = "龙语者使用龙语施法。法术瞬发额外占用的法术环位降低3环，最低为0。此外，龙语者的施法者等级获得+2特性加值。";
             const string nameEn = "Dragon Speaker";
             const string descEn = "Dragon Speakers cast through Draconic. Quicken Spell increases the spell slot level by 3 less than normal, and the Dragon Speaker gains a +2 trait bonus to caster level.";
 
@@ -265,7 +266,7 @@ namespace MDGA.Backgrounds
                 if (__instance == null || !__instance.AppliedMetamagics.Contains(Metamagic.Quicken)) return;
                 if (!DragonSpeakerBackground.HasDragonSpeaker(__instance.Spellbook?.Owner)) return;
 
-                __instance.ReduceCost(3);
+                __instance.ReduceCost(DragonSpeakerBackground.QuickenCostReduction);
             }
             catch (Exception ex)
             {
@@ -303,7 +304,7 @@ namespace MDGA.Backgrounds
                 {
                     cost--;
                 }
-                cost = Math.Max(0, cost - 3);
+                cost = Math.Max(0, cost - DragonSpeakerBackground.QuickenCostReduction);
 
                 if (spellLevel + cost <= 10)
                 {
@@ -314,6 +315,20 @@ namespace MDGA.Backgrounds
             {
                 if (Main.Settings?.VerboseLogging == true)
                     Main.Log("[DragonSpeaker] RuleCollectMetamagic patch error: " + ex.Message);
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(SpellbookMetamagicSelectorVM), "GetCost")]
+    internal static class DragonSpeakerMetamagicDisplayPatch
+    {
+        [HarmonyPostfix]
+        private static void Postfix(Metamagic metamagic, IReactiveProperty<UnitDescriptor> ___m_Unit, ref int __result)
+        {
+            if (metamagic == Metamagic.Quicken && Main.Enabled
+                && DragonSpeakerBackground.HasDragonSpeaker(___m_Unit.Value))
+            {
+                __result = Math.Max(0, __result - DragonSpeakerBackground.QuickenCostReduction);
             }
         }
     }

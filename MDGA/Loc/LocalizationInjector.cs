@@ -654,6 +654,7 @@ namespace MDGA.Loc
                 // 并在本地对象里写入 m_Text 作为兜底，防止 UI 读取时出现 null。
                 BindKeyAndText(feat, "m_DisplayName", displayKey, display);
                 BindKeyAndText(feat, "m_Description", descKey, description);
+                BindKeyAndText(feat, "m_DescriptionShort", descKey, description);
             }
             catch (Exception ex)
             {
@@ -678,12 +679,13 @@ namespace MDGA.Loc
                 }
                 var keyField = locObj.GetType().GetField("m_Key", flags);
                 var textField = locObj.GetType().GetField("m_Text", flags);
+                var sharedField = locObj.GetType().GetField("Shared", flags);
                 if (keyField != null) keyField.SetValue(locObj, key);
-                if (textField != null && (textField.GetValue(locObj) as string) == null)
+                if (textField != null && text != null)
                 {
-                    // 仅在原文本为空时写入兜底文本，避免覆盖其他 mod 已经写入的内容
                     textField.SetValue(locObj, text);
                 }
+                if (sharedField != null) sharedField.SetValue(locObj, null);
             }
             catch (Exception ex)
             {

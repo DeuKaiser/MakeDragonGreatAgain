@@ -1,14 +1,16 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
+using Kingmaker.Controllers.Dialog;
 using Kingmaker.UI.MVVM._VM.Tooltip.Utils;
 using Owlcat.Runtime.UI.Tooltips;
 using UnityEngine;
 
 namespace MDGA.Loc
 {
-    // ½öÔö¼ÓÏêÏ¸Õï¶ÏÈÕÖ¾£¬ÓÃÓÚÈ·¶¨Êµ¼ÊÃüÖĞµÄÖØÔØÓë²ÎÊıÎ»ÖÃ£¬²»¸Ä±äĞĞÎªÂ·¾¶¡£
+    // ä»…å¢åŠ è¯¦ç»†è¯Šæ–­æ—¥å¿—ï¼Œç”¨äºç¡®å®šå®é™…å‘½ä¸­çš„é‡è½½ä¸å‚æ•°ä½ç½®ï¼Œä¸æ”¹å˜è¡Œä¸ºè·¯å¾„ã€‚
     internal static class TooltipOverrides
     {
         private static void SafeLog(string msg)
@@ -30,89 +32,72 @@ namespace MDGA.Loc
             catch { return "<err>"; }
         }
 
-        // Patch ËùÓĞ ShowLinkTooltip ÖØÔØ£º½öÈÕÖ¾£¬²»¸ÄÂß¼­³ı·ÇÊÇÎÒÃÇµÄ¼üÇÒ³É¹¦¸ÄÎª¼òµ¥Ä£°å£¨ĞĞÎª±£³Ö£©¡£
-        [HarmonyPatch]
-        private static class Patch_ShowLinkTooltip_Override
+        [HarmonyPatch(
+            typeof(TooltipHelper),
+            nameof(TooltipHelper.ShowLinkTooltip),
+            new Type[]
+            {
+                typeof(MonoBehaviour),
+                typeof(string),
+                typeof(List<SkillCheckDC>),
+                typeof(List<SkillCheckResult>),
+                typeof(TooltipConfig)
+            })]
+        private static class Patch_ShowLinkTooltip_String
         {
-            static System.Collections.Generic.IEnumerable<MethodBase> TargetMethods()
-            {
-                var t = typeof(TooltipHelper);
-                foreach (var m in t.GetMethods(BindingFlags.Public | BindingFlags.Static))
-                {
-                    if (m.Name == nameof(TooltipHelper.ShowLinkTooltip))
-                    {
-                        try
-                        {
-                            var ps = m.GetParameters();
-                            var sig = string.Join(", ", ps.Select(p => $"{p.ParameterType.Name} {p.Name}"));
-                            SafeLog($"[TooltipDiag] Hook ShowLinkTooltip overload: {m.Name}({sig})");
-                        }
-                        catch { }
-                        yield return m;
-                    }
-                }
-            }
-
             [HarmonyPrefix]
-            private static bool Prefix(MethodBase __originalMethod, object[] __args)
+            private static bool Prefix(MonoBehaviour component, string key, TooltipConfig config)
             {
-                try
-                {
-                    // ¼ÇÂ¼ÃüÖĞµÄÖØÔØºÍÈ«²¿²ÎÊıÄÚÈİ
-                    var ps = __originalMethod?.GetParameters() ?? Array.Empty<ParameterInfo>();
-                    var sig = string.Join(", ", ps.Select(p => p.ParameterType.Name));
-                    SafeLog($"[TooltipDiag] Invoked ShowLinkTooltip overload ({sig}); argCount={__args?.Length ?? 0}");
-                    if (__args != null)
-                    {
-                        for (int i = 0; i < __args.Length; i++)
-                        {
-                            SafeLog($"[TooltipDiag]  arg[{i}] => {FormatArg(__args[i])}");
-                        }
-                    }
+                return HandleLinkTooltip(component, new[] { key }, config);
+            }
+        }
 
-                    // Ô­ÓĞ´¦Àí£º½öµ±¼üÆ¥ÅäÊ±³¢ÊÔ¼òµ¥Ä£°å£¬·ñÔòÍêÈ«²»¸Ä±äĞĞÎª
-                    if (__args == null || __args.Length < 2) return true;
-                    var second = __args[1];
-                    var looksMdga = false;
-                    if (second is string s) looksMdga = s.IndexOf("MDGA_Zekarius_", StringComparison.OrdinalIgnoreCase) >= 0;
-                    else if (second is string[] arr) looksMdga = arr.Any(x => x != null && x.IndexOf("MDGA_Zekarius_", StringComparison.OrdinalIgnoreCase) >= 0);
-                    SafeLog($"[TooltipDiag] looksMdga={looksMdga}");
+        [HarmonyPatch(
+            typeof(TooltipHelper),
+            nameof(TooltipHelper.ShowLinkTooltip),
+            new Type[]
+            {
+                typeof(MonoBehaviour),
+                typeof(string[]),
+                typeof(List<SkillCheckDC>),
+                typeof(List<SkillCheckResult>),
+                typeof(TooltipConfig)
+            })]
+        private static class Patch_ShowLinkTooltip_Keys
+        {
+            [HarmonyPrefix]
+            private static bool Prefix(MonoBehaviour component, string[] keys, TooltipConfig config)
+            {
+                return HandleLinkTooltip(component, keys, config);
+            }
+        }
 
-                    if (!looksMdga) return true;
+        private static bool HandleLinkTooltip(MonoBehaviour component, IEnumerable<string> keys, TooltipConfig config)
+        {
+            try
+            {
+                var key = (keys ?? Enumerable.Empty<string>())
+                    .Where(k => !string.IsNullOrEmpty(k))
+                    .Select(k => k.StartsWith("Encyclopedia:", StringComparison.OrdinalIgnoreCase)
+                        ? k.Substring("Encyclopedia:".Length)
+                        : k)
+                    .FirstOrDefault(k => k.StartsWith("MDGA_Zekarius_", StringComparison.OrdinalIgnoreCase));
 
-                    // ¼ÇÂ¼½âÎöµ½µÄ¼üÖµ
-                    string key = null;
-                    if (second is string s2)
-                    {
-                        key = s2.StartsWith("Encyclopedia:", StringComparison.OrdinalIgnoreCase) ? s2.Substring("Encyclopedia:".Length) : s2;
-                    }
-                    else if (second is string[] a2)
-                    {
-                        key = a2.Select(k => k ?? "").Select(k => k.StartsWith("Encyclopedia:", StringComparison.OrdinalIgnoreCase) ? k.Substring("Encyclopedia:".Length) : k)
-                                .FirstOrDefault(k => k.StartsWith("MDGA_Zekarius_", StringComparison.OrdinalIgnoreCase));
-                    }
-                    SafeLog($"[TooltipDiag] resolvedKey='{key}'");
+                if (key == null) return true;
 
-                    var text = LocalizationInjector.GetFallback(key);
-                    SafeLog($"[TooltipDiag] fallbackTextLen={(text==null? -1 : text.Length)}");
-
-                    // ÌáÈ¡×é¼şÓëÅäÖÃ²¢³¢ÊÔ¼òµ¥Ä£°åÏÔÊ¾
-                    var comp = __args[0] as MonoBehaviour;
-                    var cfgObj = __args.LastOrDefault();
-                    var cfg = cfgObj is TooltipConfig c ? c : default;
-                    var attempted = TryShowSimpleTooltip(comp, text, cfg);
-                    SafeLog($"[TooltipDiag] TryShowSimpleTooltip attempted={attempted}");
-                    if (attempted) return false; // ÎÒÃÇ½Ó¹Ü³É¹¦£¬Ìø¹ıÔ­Âß¼­
-                }
-                catch (Exception ex)
-                {
-                    SafeLog($"[TooltipDiag] Prefix error: {ex.Message}");
-                }
+                var text = LocalizationInjector.GetFallback(key);
+                var attempted = TryShowSimpleTooltip(component, text, config);
+                SafeLog($"[TooltipDiag] key='{key}' fallbackTextLen={(text == null ? -1 : text.Length)} attempted={attempted}");
+                return !attempted;
+            }
+            catch (Exception ex)
+            {
+                SafeLog($"[TooltipDiag] Prefix error: {ex.Message}");
                 return true;
             }
         }
 
-        // ±£³ÖÔ­ÓĞµÄ¼òµ¥Ä£°åÂß¼­ÊµÏÖ
+        // ä¿æŒåŸæœ‰çš„ç®€å•æ¨¡æ¿é€»è¾‘å®ç°
         private static bool TryShowSimpleTooltip(MonoBehaviour component, string text, TooltipConfig config)
         {
             try

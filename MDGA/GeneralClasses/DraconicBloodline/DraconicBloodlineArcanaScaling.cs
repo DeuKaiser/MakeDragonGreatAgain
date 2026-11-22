@@ -15,6 +15,7 @@ using Kingmaker.UnitLogic.Mechanics;
 using Kingmaker.EntitySystem.Entities;
 using Kingmaker.EntitySystem; // for EntityFact
 using Kingmaker.Enums.Damage;
+using MDGA.Mythic;
 
 namespace MDGA.GeneralClasses.DraconicBloodline
 {
@@ -24,6 +25,12 @@ namespace MDGA.GeneralClasses.DraconicBloodline
     {
         private static readonly BlueprintGuid SorcererClassGuid = BlueprintGuid.Parse("b3a505fb61437dc4097f43c3f8f9a4cf");
         private static readonly BlueprintGuid DragonDiscipleClassGuid = BlueprintGuid.Parse("72051275b1dbb2d42ba9118237794f7c");
+        private static readonly BlueprintGuid[] DescriptorlessDragonBreathAbilityGuids = new[]
+        {
+            BlueprintGuid.Parse("59d08b909d684b91a137766ab22f4b1a"), // Dragon Wrath wrapper
+            BlueprintGuid.Parse("e3bb1103c16140818aaad02f15a4896c"), // Dragon Wrath (gold)
+            BlueprintGuid.Parse("121350478fb44e16a0e563a233e19974")  // Dragon Wrath (corrupted gold)
+        };
 
         internal static readonly BlueprintGuid[] ArcanaGuids = new[]
         {
@@ -154,15 +161,34 @@ namespace MDGA.GeneralClasses.DraconicBloodline
             return null;
         }
 
-        private static bool DescriptorMatchesEnergy(SpellDescriptor descriptor, BaseDamage damage)
+        private static bool DescriptorMatchesEnergy(SpellDescriptor descriptor, BaseDamage damage, UnitEntityData initiator = null)
         {
             try
             {
                 var ed = damage as EnergyDamage; if (ed == null) return false;
                 if (descriptor.HasAnyFlag(SpellDescriptor.Acid) && ed.EnergyType == DamageEnergyType.Acid) return true;
                 if (descriptor.HasAnyFlag(SpellDescriptor.Fire) && ed.EnergyType == DamageEnergyType.Fire) return true;
+                if (GoldenDragonBodyAdaptation.FireBonusAppliesToHoly(descriptor, damage, initiator)) return true;
                 if (descriptor.HasAnyFlag(SpellDescriptor.Cold) && ed.EnergyType == DamageEnergyType.Cold) return true;
                 if (descriptor.HasAnyFlag(SpellDescriptor.Electricity) && ed.EnergyType == DamageEnergyType.Electricity) return true;
+            }
+            catch { }
+            return false;
+        }
+
+        private static bool IsKnownDescriptorlessDragonBreath(BlueprintAbility ability)
+        {
+            if (ability == null) return false;
+            try
+            {
+                if (DescriptorlessDragonBreathAbilityGuids.Contains(ability.AssetGuid)) return true;
+            }
+            catch { }
+
+            try
+            {
+                var name = ability.name ?? string.Empty;
+                return name.IndexOf("DragonWrathGold", StringComparison.OrdinalIgnoreCase) >= 0;
             }
             catch { }
             return false;
@@ -177,19 +203,22 @@ namespace MDGA.GeneralClasses.DraconicBloodline
                 var context = evt.Reason.Context;
                 var ability = context?.SourceAbility;
                 bool isSpell = ability != null && ability.IsSpell;
-                // 通过描述符识别：呼吸武器（BreathWeapon）可视作法术来源处理
-                bool isBreath = (context?.SpellDescriptor.HasAnyFlag(SpellDescriptor.BreathWeapon) ?? false);
+                // Some Golden Dragon breath payloads are missing SpellDescriptorComponent, so recognize them by blueprint too.
+                bool isBreath = (context?.SpellDescriptor.HasAnyFlag(SpellDescriptor.BreathWeapon) ?? false)
+                                || IsKnownDescriptorlessDragonBreath(ability);
 
                 // 按元素 gating：要么描述符包含对应元素，要么（吐息）伤害包类型匹配
-                bool elementMatch = (context != null && context.SpellDescriptor.HasAnyFlag(__instance.SpellDescriptor))
-                                    || (isBreath && evt.DamageBundle.Any(d => DescriptorMatchesEnergy(__instance.SpellDescriptor, d)));
+                bool descriptorElementMatch = context != null && context.SpellDescriptor.HasAnyFlag(__instance.SpellDescriptor);
+                bool damageElementMatch = evt.DamageBundle.Any(d => DescriptorMatchesEnergy(__instance.SpellDescriptor, d, evt.Initiator));
+                bool adaptedHolyDamageMatch = evt.DamageBundle.Any(d => GoldenDragonBodyAdaptation.FireBonusAppliesToHoly(__instance.SpellDescriptor, d, evt.Initiator));
+                bool elementMatch = descriptorElementMatch || (isBreath && damageElementMatch) || adaptedHolyDamageMatch;
                 if (!elementMatch) return true;
 
                 // SpellsOnly：允许吐息例外
-                if (__instance.SpellsOnly && !isSpell && !isBreath) return true;
+                if (__instance.SpellsOnly && !isSpell && !isBreath && !adaptedHolyDamageMatch) return true;
 
                 // 物理能力直接跳过（吐息除外）
-                if (ability != null && ability.Type == AbilityType.Physical && !isBreath) return true;
+                if (ability != null && ability.Type == AbilityType.Physical && !isBreath && !adaptedHolyDamageMatch) return true;
 
                 var prog = evt.Initiator?.Descriptor?.Progression;
                 if (prog == null) return true;
@@ -201,7 +230,10 @@ namespace MDGA.GeneralClasses.DraconicBloodline
                 if (dd != null) eff += prog.GetClassLevel(dd);
 
                 int tier = eff >= 15 ? 4 : eff >= 10 ? 3 : eff >= 5 ? 2 : 1;
-                if (tier <= 1) return true; // 交给原版 +1 处理
+                bool vanillaCanHandle = descriptorElementMatch
+                                        && (!__instance.SpellsOnly || isSpell)
+                                        && (ability == null || ability.Type != AbilityType.Physical);
+                if (tier <= 1 && vanillaCanHandle && !isBreath) return true; // 交给原版 +1 处理
 
                 // 尝试定位自身 fact（作为修正来源）
                 // 1) 属性或字段 Fact/Owner
@@ -242,8 +274,8 @@ namespace MDGA.GeneralClasses.DraconicBloodline
                     if (dmg.Precision) continue;
                     var dice = dmg.Dice.ModifiedValue;
                     if (dice.Rolls <= 0) continue;
-                    // 吐息需逐项判定元素匹配；否则遵循事件整体描述符
-                    if (isBreath && !DescriptorMatchesEnergy(__instance.SpellDescriptor, dmg)) continue;
+                    // 吐息/龙躯适应的神圣伤害需逐项判定元素匹配；否则遵循事件整体描述符
+                    if ((isBreath || adaptedHolyDamageMatch) && !DescriptorMatchesEnergy(__instance.SpellDescriptor, dmg, evt.Initiator)) continue;
 
                     int basePerDie = 1;
                     if (__instance.UseContextBonus)
@@ -259,7 +291,7 @@ namespace MDGA.GeneralClasses.DraconicBloodline
                 }
                 if (any)
                 {
-                    Main.Log($"[ArcanaScale] Applied scaled modifier via Prefix eff={eff} tier={tier} ability={ability?.NameSafe()} fact={(arcanaFact?.Blueprint?.name ?? "<null>")}");
+                    Main.Log($"[ArcanaScale] Applied modifier via Prefix eff={eff} tier={tier} breath={isBreath} descriptorMatch={descriptorElementMatch} ability={ability?.NameSafe()} fact={(arcanaFact?.Blueprint?.name ?? "<null>")}");
                 }
                 return false; // 跳过原版（原版只 +1/骰）
             }
